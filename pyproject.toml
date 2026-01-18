@@ -1,0 +1,31 @@
+[project]
+description = "Trackable: Personal Shopping Agent"
+name = "trackable"
+readme = "README.md"
+requires-python = ">=3.14"
+version = "0.1.0"
+
+dependencies = [
+  "google-adk>=1.22.1",
+  "pydantic>=2.12.5",
+]
+
+[dependency-groups]
+dev = [
+  "black>=26.1.0",
+  "isort>=7.0.0",
+  "pytest>=9.0.2",
+  "pytest-asyncio>=1.3.0",
+  "pytest-cov>=7.0.0",
+  "pytest-datadir>=1.8.0",
+]
+
+[tool.pytest]
+addopts = ["-v", "-m", "manual"]
+markers = ["manual: marks tests as manual (deselected by default"]
+minversion = "9.0"
+testpaths = ["tests"]
+
+[tool.isort]
+profile = "black"
+skip_gitignore = true
