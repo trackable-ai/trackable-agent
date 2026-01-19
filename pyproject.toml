@@ -6,9 +6,15 @@ requires-python = ">=3.14"
 version = "0.1.0"
 
 dependencies = [
+  "beautifulsoup4>=4.12.0",
   "dotenv>=0.9.9",
   "email-validator>=2.3.0",
   "google-adk>=1.22.1",
+  "google-api-python-client>=2.154.0",
+  "google-auth-httplib2>=0.2.0",
+  "google-auth-oauthlib>=1.2.0",
+  "httpx>=0.28.1",
+  "pillow>=11.2.0",
   "pydantic>=2.12.5",
 ]
 
@@ -23,8 +29,10 @@ dev = [
 ]
 
 [tool.pytest]
-addopts = ["-v", "-m", "manual"]
-markers = ["manual: marks tests as manual (deselected by default"]
+addopts = ["-v", "-m", "not manual"]
+markers = [
+  "manual: marks tests as manual (deselected by default)",
+]
 minversion = "9.0"
 testpaths = ["tests"]
 
