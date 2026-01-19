@@ -1,0 +1,30 @@
+{
+  "orders": [
+    {
+      "merchant_name": "Amazon.com",
+      "merchant_domain": "amazon.com",
+      "merchant_order_id": "111-3710012-0752235",
+      "order_date": "2026-01-10T11:30:17+00:00",
+      "order_total": 13.5,
+      "currency": "USD",
+      "items": [
+        {
+          "id": "item_1_111-3710012-0752235",
+          "order_id": "111-3710012-0752235",
+          "name": "PETLIBRO 4 Packs Replacement Filters for Dockstream Cat Water Fountain PLWF105/PLWF115/PLWF005, 2 Months Set of Replacement Filters for Ultra Quiet Pet Water Fountain",
+          "quantity": 1,
+          "price": { "amount": 12.99, "currency": "USD" }
+        }
+      ],
+      "tracking_number": "PvnBcDGc1",
+      "carrier": "Amazon",
+      "confidence_score": 0.9,
+      "needs_clarification": false,
+      "clarification_questions": [],
+      "extraction_notes": "Extracted merchant, order ID, date, item details, tracking number, and total from the email content and headers. The carrier is inferred as Amazon from the sender and tracking link domain. The tracking number was extracted from the 'shipmentId' parameter in the tracking URL."
+    }
+  ],
+  "processing_status": "success",
+  "error_message": null,
+  "total_processed": 1
+}

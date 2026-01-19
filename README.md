@@ -55,3 +55,20 @@ GOOGLE_GENAI_USE_VERTEXAI=1
 GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
 GOOGLE_CLOUD_LOCATION="YOUR_VERTEX_AI_LOCATION" # e.g., us-central1
 ```
+
+## Run Agent
+
+```bash
+# Run agent in the command line
+adk run trackable
+
+# Run agent web UI
+adk web
+```
+
+## Run Tests
+
+```bash
+pytest .  # run all tests (excluding manual ones)
+pytest -m manual  # run all manual tests (especially llm-related ones)
+```
