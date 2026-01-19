@@ -4,6 +4,16 @@ Trackable data models.
 This package contains all Pydantic models for the Trackable Personal Shopping Agent.
 """
 
+# Intervention models
+from trackable.models.intervention import (
+    ActionType,
+    Intervention,
+    InterventionPriority,
+    InterventionStatus,
+    InterventionType,
+    RecommendedAction,
+)
+
 # Order models
 from trackable.models.order import (
     Carrier,
@@ -40,16 +50,6 @@ from trackable.models.user import (
     User,
     UserPreferences,
     UserStatus,
-)
-
-# Intervention models
-from trackable.models.intervention import (
-    ActionType,
-    Intervention,
-    InterventionPriority,
-    InterventionStatus,
-    InterventionType,
-    RecommendedAction,
 )
 
 __all__ = [

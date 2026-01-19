@@ -2,11 +2,12 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class UserStatus(StrEnum):
     """User account status"""
+
     ACTIVE = "active"
     INACTIVE = "inactive"
     SUSPENDED = "suspended"
@@ -15,6 +16,7 @@ class UserStatus(StrEnum):
 
 class NotificationPreference(StrEnum):
     """Notification delivery preferences"""
+
     EMAIL = "email"
     PUSH = "push"
     IN_APP = "in_app"
@@ -24,6 +26,7 @@ class NotificationPreference(StrEnum):
 
 class ReminderSensitivity(StrEnum):
     """How aggressively the agent should remind users"""
+
     LOW = "low"  # Only critical deadlines
     MEDIUM = "medium"  # Important deadlines
     HIGH = "high"  # All deadlines with multiple reminders
@@ -31,38 +34,61 @@ class ReminderSensitivity(StrEnum):
 
 class GmailConnection(BaseModel):
     """Gmail OAuth connection details"""
+
     connected: bool = Field(description="Whether Gmail is connected")
-    email: Optional[EmailStr] = Field(default=None, description="Connected Gmail address")
-    connected_at: Optional[datetime] = Field(default=None, description="Connection timestamp")
-    last_sync: Optional[datetime] = Field(default=None, description="Last email sync timestamp")
+    email: Optional[EmailStr] = Field(
+        default=None, description="Connected Gmail address"
+    )
+    connected_at: Optional[datetime] = Field(
+        default=None, description="Connection timestamp"
+    )
+    last_sync: Optional[datetime] = Field(
+        default=None, description="Last email sync timestamp"
+    )
     scopes: list[str] = Field(default_factory=list, description="OAuth scopes granted")
-    token_valid: bool = Field(default=True, description="Whether OAuth token is still valid")
+    token_valid: bool = Field(
+        default=True, description="Whether OAuth token is still valid"
+    )
 
 
 class UserPreferences(BaseModel):
     """User preferences for agent behavior"""
+
     # Notification preferences
     notification_channels: list[NotificationPreference] = Field(
-        default_factory=lambda: [NotificationPreference.EMAIL, NotificationPreference.IN_APP],
-        description="Preferred notification channels"
+        default_factory=lambda: [
+            NotificationPreference.EMAIL,
+            NotificationPreference.IN_APP,
+        ],
+        description="Preferred notification channels",
     )
     reminder_sensitivity: ReminderSensitivity = Field(
         default=ReminderSensitivity.MEDIUM,
-        description="Reminder frequency preference"
+        description="Reminder frequency preference",
     )
 
     # Reminder timing
     days_before_deadline_reminder: list[int] = Field(
         default_factory=lambda: [7, 3, 1],
-        description="Days before deadline to send reminders"
+        description="Days before deadline to send reminders",
     )
-    quiet_hours_start: Optional[int] = Field(default=22, ge=0, le=23, description="Quiet hours start (hour 0-23)")
-    quiet_hours_end: Optional[int] = Field(default=8, ge=0, le=23, description="Quiet hours end (hour 0-23)")
+    quiet_hours_start: Optional[int] = Field(
+        default=22, ge=0, le=23, description="Quiet hours start (hour 0-23)"
+    )
+    quiet_hours_end: Optional[int] = Field(
+        default=8, ge=0, le=23, description="Quiet hours end (hour 0-23)"
+    )
 
     # Agent behavior
-    auto_detect_orders: bool = Field(default=True, description="Automatically detect orders from Gmail")
-    proactive_interventions: bool = Field(default=True, description="Allow agent to proactively intervene")
-    require_confirmation: bool = Field(default=True, description="Require user confirmation for actions")
+    auto_detect_orders: bool = Field(
+        default=True, description="Automatically detect orders from Gmail"
+    )
+    proactive_interventions: bool = Field(
+        default=True, description="Allow agent to proactively intervene"
+    )
+    require_confirmation: bool = Field(
+        default=True, description="Require user confirmation for actions"
+    )
 
     # Display preferences
     timezone: str = Field(default="UTC", description="User's timezone")
@@ -75,6 +101,7 @@ class User(BaseModel):
 
     Users own orders and have preferences that guide agent behavior.
     """
+
     # Identity
     id: str = Field(description="Internal user identifier (UUID)")
     email: EmailStr = Field(description="User's email address")
@@ -84,23 +111,39 @@ class User(BaseModel):
     status: UserStatus = Field(default=UserStatus.ACTIVE, description="Account status")
 
     # Connections
-    gmail_connection: Optional[GmailConnection] = Field(default=None, description="Gmail connection details")
+    gmail_connection: Optional[GmailConnection] = Field(
+        default=None, description="Gmail connection details"
+    )
 
     # Preferences
-    preferences: UserPreferences = Field(default_factory=UserPreferences, description="User preferences")
+    preferences: UserPreferences = Field(
+        default_factory=UserPreferences, description="User preferences"
+    )
 
     # Statistics
     total_orders: int = Field(default=0, description="Total orders tracked")
-    active_orders: int = Field(default=0, description="Active orders with pending actions")
-    missed_return_windows: int = Field(default=0, description="Count of missed return windows")
+    active_orders: int = Field(
+        default=0, description="Active orders with pending actions"
+    )
+    missed_return_windows: int = Field(
+        default=0, description="Count of missed return windows"
+    )
 
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Account creation time")
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last update time")
-    last_login: Optional[datetime] = Field(default=None, description="Last login timestamp")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Account creation time",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update time",
+    )
+    last_login: Optional[datetime] = Field(
+        default=None, description="Last login timestamp"
+    )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "usr_abc123",
                 "email": "user@example.com",
@@ -112,14 +155,15 @@ class User(BaseModel):
                     "connected_at": "2024-01-15T10:00:00Z",
                     "last_sync": "2024-01-20T14:30:00Z",
                     "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
-                    "token_valid": True
+                    "token_valid": True,
                 },
                 "preferences": {
                     "notification_channels": ["email", "in_app"],
                     "reminder_sensitivity": "medium",
-                    "days_before_deadline_reminder": [7, 3, 1]
+                    "days_before_deadline_reminder": [7, 3, 1],
                 },
                 "total_orders": 42,
-                "active_orders": 3
+                "active_orders": 3,
             }
         }
+    )

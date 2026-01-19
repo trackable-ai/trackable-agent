@@ -3,11 +3,12 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class OrderStatus(StrEnum):
     """Order lifecycle status"""
+
     DETECTED = "detected"  # Order discovered from email/image
     CONFIRMED = "confirmed"  # Order confirmation received
     SHIPPED = "shipped"  # Shipment initiated
@@ -21,6 +22,7 @@ class OrderStatus(StrEnum):
 
 class ShipmentStatus(StrEnum):
     """Shipment tracking status"""
+
     PENDING = "pending"  # Awaiting shipment
     LABEL_CREATED = "label_created"  # Shipping label created
     IN_TRANSIT = "in_transit"  # Package in transit
@@ -34,6 +36,7 @@ class ShipmentStatus(StrEnum):
 
 class Carrier(StrEnum):
     """Supported shipping carriers"""
+
     USPS = "usps"
     UPS = "ups"
     FEDEX = "fedex"
@@ -45,6 +48,7 @@ class Carrier(StrEnum):
 
 class ItemCondition(StrEnum):
     """Item condition for returns"""
+
     NEW = "new"
     OPENED = "opened"
     USED = "used"
@@ -54,6 +58,7 @@ class ItemCondition(StrEnum):
 
 class Money(BaseModel):
     """Money amount with currency"""
+
     amount: Decimal = Field(description="Amount in the currency's smallest unit")
     currency: str = Field(default="USD", description="ISO 4217 currency code")
 
@@ -63,16 +68,20 @@ class Money(BaseModel):
 
 class Merchant(BaseModel):
     """Merchant/retailer information"""
+
     id: str = Field(description="Internal merchant identifier")
     name: str = Field(description="Merchant display name")
     domain: Optional[str] = Field(default=None, description="Merchant domain")
     support_email: Optional[str] = Field(default=None, description="Support email")
     support_url: Optional[HttpUrl] = Field(default=None, description="Support URL")
-    return_portal_url: Optional[HttpUrl] = Field(default=None, description="Return portal URL")
+    return_portal_url: Optional[HttpUrl] = Field(
+        default=None, description="Return portal URL"
+    )
 
 
 class Item(BaseModel):
     """Individual item in an order"""
+
     id: str = Field(description="Internal item identifier")
     order_id: str = Field(description="Parent order ID")
     name: str = Field(description="Item name/title")
@@ -82,18 +91,29 @@ class Item(BaseModel):
     sku: Optional[str] = Field(default=None, description="Stock keeping unit")
     size: Optional[str] = Field(default=None, description="Size variant")
     color: Optional[str] = Field(default=None, description="Color variant")
-    condition: ItemCondition = Field(default=ItemCondition.NEW, description="Item condition")
+    condition: ItemCondition = Field(
+        default=ItemCondition.NEW, description="Item condition"
+    )
     image_url: Optional[HttpUrl] = Field(default=None, description="Product image URL")
 
     # Return/exchange tracking
-    is_returnable: Optional[bool] = Field(default=None, description="Whether item can be returned")
-    is_exchangeable: Optional[bool] = Field(default=None, description="Whether item can be exchanged")
-    return_requested: bool = Field(default=False, description="Return has been requested")
-    exchange_requested: bool = Field(default=False, description="Exchange has been requested")
+    is_returnable: Optional[bool] = Field(
+        default=None, description="Whether item can be returned"
+    )
+    is_exchangeable: Optional[bool] = Field(
+        default=None, description="Whether item can be exchanged"
+    )
+    return_requested: bool = Field(
+        default=False, description="Return has been requested"
+    )
+    exchange_requested: bool = Field(
+        default=False, description="Exchange has been requested"
+    )
 
 
 class TrackingEvent(BaseModel):
     """Individual tracking event"""
+
     timestamp: datetime = Field(description="Event timestamp")
     status: ShipmentStatus = Field(description="Shipment status")
     location: Optional[str] = Field(default=None, description="Event location")
@@ -102,29 +122,47 @@ class TrackingEvent(BaseModel):
 
 class Shipment(BaseModel):
     """Shipment tracking information"""
+
     id: str = Field(description="Internal shipment identifier")
     order_id: str = Field(description="Parent order ID")
-    tracking_number: Optional[str] = Field(default=None, description="Carrier tracking number")
+    tracking_number: Optional[str] = Field(
+        default=None, description="Carrier tracking number"
+    )
     carrier: Carrier = Field(default=Carrier.UNKNOWN, description="Shipping carrier")
-    status: ShipmentStatus = Field(default=ShipmentStatus.PENDING, description="Current status")
+    status: ShipmentStatus = Field(
+        default=ShipmentStatus.PENDING, description="Current status"
+    )
 
     # Addresses
-    shipping_address: Optional[str] = Field(default=None, description="Shipping address")
+    shipping_address: Optional[str] = Field(
+        default=None, description="Shipping address"
+    )
     return_address: Optional[str] = Field(default=None, description="Return address")
 
     # Timing
     shipped_at: Optional[datetime] = Field(default=None, description="Ship date")
-    estimated_delivery: Optional[datetime] = Field(default=None, description="Estimated delivery date")
-    delivered_at: Optional[datetime] = Field(default=None, description="Actual delivery date")
+    estimated_delivery: Optional[datetime] = Field(
+        default=None, description="Estimated delivery date"
+    )
+    delivered_at: Optional[datetime] = Field(
+        default=None, description="Actual delivery date"
+    )
 
     # Tracking
-    tracking_url: Optional[HttpUrl] = Field(default=None, description="Carrier tracking URL")
-    events: list[TrackingEvent] = Field(default_factory=list, description="Tracking events")
-    last_updated: Optional[datetime] = Field(default=None, description="Last tracking update")
+    tracking_url: Optional[HttpUrl] = Field(
+        default=None, description="Carrier tracking URL"
+    )
+    events: list[TrackingEvent] = Field(
+        default_factory=list, description="Tracking events"
+    )
+    last_updated: Optional[datetime] = Field(
+        default=None, description="Last tracking update"
+    )
 
 
 class SourceType(StrEnum):
     """Source of order information"""
+
     EMAIL = "email"  # Gmail order confirmation
     SCREENSHOT = "screenshot"  # User-shared screenshot
     PHOTO = "photo"  # User-shared photo
@@ -139,15 +177,22 @@ class Order(BaseModel):
     This model maintains the agent's awareness of user purchases,
     tracking everything from detection through delivery, returns, and refunds.
     """
+
     # Identity
     id: str = Field(description="Internal order identifier (UUID)")
     user_id: str = Field(description="User who owns this order")
     merchant: Merchant = Field(description="Merchant information")
 
     # Order details
-    order_number: Optional[str] = Field(default=None, description="Merchant order number")
-    order_date: Optional[datetime] = Field(default=None, description="Order placement date")
-    status: OrderStatus = Field(default=OrderStatus.DETECTED, description="Order status")
+    order_number: Optional[str] = Field(
+        default=None, description="Merchant order number"
+    )
+    order_date: Optional[datetime] = Field(
+        default=None, description="Order placement date"
+    )
+    status: OrderStatus = Field(
+        default=OrderStatus.DETECTED, description="Order status"
+    )
 
     # Items and pricing
     items: list[Item] = Field(default_factory=list, description="Order items")
@@ -157,40 +202,73 @@ class Order(BaseModel):
     total: Optional[Money] = Field(default=None, description="Total amount")
 
     # Shipment tracking
-    shipments: list[Shipment] = Field(default_factory=list, description="Shipment information")
+    shipments: list[Shipment] = Field(
+        default_factory=list, description="Shipment information"
+    )
 
     # Return/exchange window tracking
-    return_window_start: Optional[datetime] = Field(default=None, description="Return window start (usually delivery date)")
-    return_window_end: Optional[datetime] = Field(default=None, description="Return window end date")
-    return_window_days: Optional[int] = Field(default=None, description="Return window duration in days")
-    exchange_window_end: Optional[datetime] = Field(default=None, description="Exchange window end date")
+    return_window_start: Optional[datetime] = Field(
+        default=None, description="Return window start (usually delivery date)"
+    )
+    return_window_end: Optional[datetime] = Field(
+        default=None, description="Return window end date"
+    )
+    return_window_days: Optional[int] = Field(
+        default=None, description="Return window duration in days"
+    )
+    exchange_window_end: Optional[datetime] = Field(
+        default=None, description="Exchange window end date"
+    )
 
     # Agent awareness metadata
     source_type: SourceType = Field(description="How this order was discovered")
-    source_id: Optional[str] = Field(default=None, description="Source identifier (email ID, file path, etc.)")
-    confidence_score: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="Extraction confidence")
-    needs_clarification: bool = Field(default=False, description="Agent needs user clarification")
-    clarification_questions: list[str] = Field(default_factory=list, description="Questions for user")
+    source_id: Optional[str] = Field(
+        default=None,
+        description="Source identifier (email ID, file path, etc.)",
+    )
+    confidence_score: Optional[float] = Field(
+        default=None, ge=0.0, le=1.0, description="Extraction confidence"
+    )
+    needs_clarification: bool = Field(
+        default=False, description="Agent needs user clarification"
+    )
+    clarification_questions: list[str] = Field(
+        default_factory=list, description="Questions for user"
+    )
 
     # URLs
     order_url: Optional[HttpUrl] = Field(default=None, description="Order details URL")
     receipt_url: Optional[HttpUrl] = Field(default=None, description="Receipt URL")
 
     # Refund tracking
-    refund_initiated: bool = Field(default=False, description="Refund has been initiated")
+    refund_initiated: bool = Field(
+        default=False, description="Refund has been initiated"
+    )
     refund_amount: Optional[Money] = Field(default=None, description="Refund amount")
-    refund_completed_at: Optional[datetime] = Field(default=None, description="Refund completion date")
+    refund_completed_at: Optional[datetime] = Field(
+        default=None, description="Refund completion date"
+    )
 
     # Timestamps
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Record creation time")
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Last update time")
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Record creation time",
+    )
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Last update time",
+    )
 
     # Notes and agent reasoning
-    notes: list[str] = Field(default_factory=list, description="Agent observations and notes")
-    last_agent_intervention: Optional[datetime] = Field(default=None, description="Last time agent intervened")
+    notes: list[str] = Field(
+        default_factory=list, description="Agent observations and notes"
+    )
+    last_agent_intervention: Optional[datetime] = Field(
+        default=None, description="Last time agent intervened"
+    )
 
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "id": "ord_abc123",
                 "user_id": "usr_xyz789",
@@ -198,7 +276,7 @@ class Order(BaseModel):
                     "id": "merch_nike",
                     "name": "Nike",
                     "domain": "nike.com",
-                    "support_email": "support@nike.com"
+                    "support_email": "support@nike.com",
                 },
                 "order_number": "NKE-2024-001234",
                 "order_date": "2024-01-15T10:30:00Z",
@@ -211,11 +289,12 @@ class Order(BaseModel):
                         "quantity": 1,
                         "price": {"amount": "120.00", "currency": "USD"},
                         "size": "10",
-                        "color": "Black"
+                        "color": "Black",
                     }
                 ],
                 "total": {"amount": "132.50", "currency": "USD"},
                 "return_window_end": "2024-02-12T23:59:59Z",
-                "source_type": "email"
+                "source_type": "email",
             }
         }
+    )
