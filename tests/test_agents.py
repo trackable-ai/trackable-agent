@@ -19,13 +19,11 @@ def load_env():
 @pytest.mark.asyncio
 async def test_happy_path():
     """Runs the agent on a simple input and expects a normal response."""
-    user_input = textwrap.dedent(
-        """
+    user_input = textwrap.dedent("""
         Double check this:
         Question: who are you
         Answer: Hello! I am an AI Research Assistant.
-    """
-    ).strip()
+    """).strip()
 
     app_name = "trackable"
 

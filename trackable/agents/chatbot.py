@@ -6,6 +6,7 @@ Additional capabilities will be added as other components become ready.
 """
 
 from google.adk.agents.llm_agent import Agent
+from google.adk.tools.google_search_tool import google_search
 
 # Create the vanilla chatbot agent
 chatbot_agent = Agent(
@@ -31,6 +32,7 @@ Future capabilities (coming soon):
 For now, be friendly and helpful. Let users know that full order tracking capabilities
 are being set up and will be available soon.
 """,
+    tools=[google_search],
 )
 
 

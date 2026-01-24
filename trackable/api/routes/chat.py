@@ -4,9 +4,11 @@ Chat API endpoint for the Trackable chatbot.
 Provides conversational interface using the vanilla ADK agent.
 """
 
-from typing import Optional
+import json
+from typing import AsyncIterator, Optional
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Content, Part
 from pydantic import BaseModel, Field
@@ -108,6 +110,108 @@ async def chat(request: ChatRequest) -> ChatResponse:
         raise HTTPException(
             status_code=500,
             detail=f"Chat processing failed: {str(e)}",
+        )
+
+
+async def generate_chat_stream(
+    user_id: str, session_id: str, message: str
+) -> AsyncIterator[str]:
+    """
+    Generate streaming chat responses using Server-Sent Events (SSE) format.
+
+    Args:
+        user_id: User identifier
+        session_id: Session ID for conversation context
+        message: User message
+
+    Yields:
+        str: SSE-formatted events with chat response chunks
+    """
+    try:
+        # Send initial metadata
+        yield f"data: {json.dumps({'type': 'session', 'session_id': session_id, 'user_id': user_id})}\n\n"
+
+        # Create content from user message
+        content = Content(parts=[Part(text=message)])
+
+        # Stream agent responses
+        response_text = ""
+        async for event in runner.run_async(
+            user_id=user_id,
+            session_id=session_id,
+            new_message=content,
+        ):
+            # Extract text from agent response
+            if event.content is None:
+                continue
+
+            if event.content.parts is not None and len(event.content.parts) > 0:
+                part = event.content.parts[0]
+                if part.text is not None:
+                    # Send incremental updates (delta from previous)
+                    new_text = part.text
+                    if new_text != response_text:
+                        delta = new_text[len(response_text) :]
+                        response_text = new_text
+
+                        # Send delta as SSE event
+                        yield f"data: {json.dumps({'type': 'delta', 'content': delta})}\n\n"
+
+        # Send completion event
+        yield f"data: {json.dumps({'type': 'done', 'full_response': response_text})}\n\n"
+
+    except Exception as e:
+        # Send error event
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+
+
+@router.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Send a message to the chatbot and get a streaming response.
+
+    This endpoint provides real-time streaming of the chatbot's response using
+    Server-Sent Events (SSE). This allows the frontend to display responses
+    as they are generated, providing better UX.
+
+    Args:
+        request: Chat request with user message and optional session info
+
+    Returns:
+        StreamingResponse: SSE stream with chat response chunks
+
+    Event Types:
+        - session: Initial event with session_id and user_id
+        - delta: Incremental text chunks as they're generated
+        - done: Final event with the complete response
+        - error: Error event if processing fails
+    """
+    try:
+        # Get or create session
+        if request.session_id:
+            session_id = request.session_id
+        else:
+            session = await runner.session_service.create_session(
+                app_name=runner.app_name,
+                user_id=request.user_id,
+            )
+            session_id = session.id
+
+        # Return streaming response
+        return StreamingResponse(
+            generate_chat_stream(request.user_id, session_id, request.message),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable buffering in nginx
+            },
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat streaming failed: {str(e)}",
         )
 
 
