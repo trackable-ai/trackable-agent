@@ -1,0 +1,32 @@
+# Trackable Worker Service Dockerfile
+# Cloud Run service for processing Cloud Tasks
+
+FROM python:3.14-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
+# Install uv for dependency management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Update PATH to include uv
+ENV PATH="/root/.local/bin:$PATH"
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv
+RUN uv sync --frozen --no-dev
+
+# Copy application code
+COPY trackable/ ./trackable/
+
+ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
+
+EXPOSE 8080
+
+# Run the worker service
+CMD ["uv", "run", "uvicorn", "trackable.worker.main:app", "--host", "0.0.0.0", "--port", "8080"]
