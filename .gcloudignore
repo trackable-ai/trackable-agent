@@ -1,0 +1,63 @@
+# Git files
+.git
+.gitignore
+.github/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Environment (will be set via Cloud Run)
+.env
+.env.local
+*.key.json
+
+# Documentation
+docs/
+*.md
+README.md
+
+# Scripts
+scripts/
+
+# Tests
+tests/
+
+# Migrations (run separately)
+migrations/
+
+# Docker config files (not needed in build)
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
