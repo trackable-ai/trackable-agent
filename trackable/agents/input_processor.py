@@ -140,8 +140,8 @@ def convert_extracted_to_order(
     """Convert extracted order data to Order model"""
 
     # Generate IDs
-    order_id = str(uuid4())
-    merchant_id = str(uuid4())
+    order_id = extracted.merchant_order_id or "unknown order id"
+    merchant_id = str(uuid4())  # TODO: use a random value for now
 
     # Create merchant
     merchant = Merchant(
