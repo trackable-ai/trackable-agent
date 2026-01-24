@@ -1,0 +1,443 @@
+openapi: 3.0.3
+info:
+  title: Trackable Ingress API
+  description: |
+    Personal shopping assistant API for post-purchase order management.
+
+    This API provides conversational AI capabilities for managing online shopping orders,
+    tracking shipments, understanding merchant policies, and monitoring return/exchange deadlines.
+
+    **Authentication:** This is an internal Cloud Run service requiring GCP IAM authentication.
+    Include an identity token in the Authorization header: `Bearer <token>`
+
+    **Model:** Powered by Gemini 2.5 Flash via Google ADK
+  version: 0.1.0
+  contact:
+    name: Trackable Team
+  license:
+    name: Proprietary
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: system
+    description: System health and information endpoints
+  - name: chat
+    description: Chat conversation endpoints
+
+paths:
+  /:
+    get:
+      tags:
+        - system
+      summary: Get service information
+      description: Returns basic information about the API service
+      operationId: getServiceInfo
+      responses:
+        "200":
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                    example: Trackable Ingress API
+                  version:
+                    type: string
+                    example: 0.1.0
+                  status:
+                    type: string
+                    example: operational
+                  description:
+                    type: string
+                    example: Personal shopping assistant for post-purchase management
+
+  /health:
+    get:
+      tags:
+        - system
+      summary: Health check
+      description: Check service health status (used by Cloud Run monitoring)
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  service:
+                    type: string
+                    example: trackable-ingress
+                  environment:
+                    type: string
+                    example: gen-lang-client-0659747538
+
+  /api/chat:
+    post:
+      tags:
+        - chat
+      summary: Send chat message (standard)
+      description: |
+        Send a message to the chatbot and receive a complete response.
+
+        This endpoint provides conversational AI capabilities using Google ADK and Gemini 2.5 Flash.
+        Sessions are managed automatically to maintain conversation context across messages.
+
+        **Session Management:**
+        - If `session_id` is omitted, a new session is created
+        - Include the returned `session_id` in subsequent messages for conversation continuity
+        - Each user should have a unique `user_id`
+      operationId: chat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            examples:
+              newConversation:
+                summary: New conversation
+                value:
+                  message: "Hello! What is Trackable?"
+                  user_id: "user_12345"
+              continueConversation:
+                summary: Continue existing conversation
+                value:
+                  message: "What can you help me with?"
+                  user_id: "user_12345"
+                  session_id: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChatResponse"
+              example:
+                response: "Hello! I'm Trackable, your personal shopping assistant. I help you manage your online shopping orders after purchase."
+                session_id: "550e8400-e29b-41d4-a716-446655440000"
+                user_id: "user_12345"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: "Chat processing failed: Internal error"
+
+  /api/chat/stream:
+    post:
+      tags:
+        - chat
+      summary: Send chat message (streaming)
+      description: |
+        Send a message to the chatbot and receive a streaming response in real-time.
+
+        This endpoint provides real-time streaming of the chatbot's response using
+        Server-Sent Events (SSE). This allows the frontend to display responses
+        as they are generated, providing better user experience.
+
+        **Event Types:**
+        - `session`: Initial event with session_id and user_id
+        - `delta`: Incremental text chunks as they're generated
+        - `done`: Final event with the complete response
+        - `error`: Error event if processing fails
+
+        **Response Format:**
+        Each event is sent as:
+        ```
+        data: <json-payload>\n\n
+        ```
+      operationId: chatStream
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChatRequest"
+            examples:
+              streamRequest:
+                summary: Streaming chat request
+                value:
+                  message: "Tell me about order tracking"
+                  user_id: "user_12345"
+      responses:
+        "200":
+          description: Server-Sent Events stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                format: binary
+                description: |
+                  Stream of SSE events. Each event is a JSON object with a `type` field.
+
+                  Event sequence:
+                  1. Session event (once)
+                  2. Delta events (multiple, as response generates)
+                  3. Done event (once, with full response)
+
+                  Or an error event if something fails.
+              examples:
+                streamResponse:
+                  summary: Example event stream
+                  value: |
+                    data: {"type":"session","session_id":"550e8400-e29b-41d4-a716-446655440000","user_id":"user_12345"}
+
+                    data: {"type":"delta","content":"I can help"}
+
+                    data: {"type":"delta","content":" you track"}
+
+                    data: {"type":"delta","content":" your orders"}
+
+                    data: {"type":"done","full_response":"I can help you track your orders from various online retailers..."}
+
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+                example: no-cache
+            Connection:
+              schema:
+                type: string
+                example: keep-alive
+            X-Accel-Buffering:
+              schema:
+                type: string
+                example: "no"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/chat/session/{session_id}:
+    delete:
+      tags:
+        - chat
+      summary: Delete chat session
+      description: |
+        Delete a chat session to clear conversation history.
+
+        Note: Sessions in the current implementation use InMemoryRunner and are
+        automatically cleaned up. This endpoint is a placeholder for future
+        persistent session management.
+      operationId: deleteSession
+      parameters:
+        - name: session_id
+          in: path
+          required: true
+          description: Session ID to delete
+          schema:
+            type: string
+            format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        - name: user_id
+          in: query
+          required: false
+          description: User identifier
+          schema:
+            type: string
+            default: default_user
+          example: "user_12345"
+      responses:
+        "200":
+          description: Session deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Session 550e8400-e29b-41d4-a716-446655440000 deleted"
+                  session_id:
+                    type: string
+                    format: uuid
+                    example: "550e8400-e29b-41d4-a716-446655440000"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        GCP Identity Token for authentication.
+
+        To obtain a token:
+        ```bash
+        TOKEN=$(gcloud auth print-identity-token)
+        ```
+
+        Then include in requests:
+        ```
+        Authorization: Bearer <token>
+        ```
+
+  schemas:
+    ChatRequest:
+      type: object
+      required:
+        - message
+        - user_id
+      properties:
+        message:
+          type: string
+          description: User's message to send to the chatbot
+          minLength: 1
+          example: "Hello! What is Trackable?"
+        user_id:
+          type: string
+          description: Unique identifier for the user
+          minLength: 1
+          example: "user_12345"
+        session_id:
+          type: string
+          format: uuid
+          description: |
+            Optional session ID for conversation continuity.
+            If not provided, a new session will be created.
+          nullable: true
+          example: "550e8400-e29b-41d4-a716-446655440000"
+
+    ChatResponse:
+      type: object
+      required:
+        - response
+        - session_id
+        - user_id
+      properties:
+        response:
+          type: string
+          description: Chatbot's complete response message
+          example: "Hello! I'm Trackable, your personal shopping assistant."
+        session_id:
+          type: string
+          format: uuid
+          description: Session ID for this conversation (use in subsequent messages)
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        user_id:
+          type: string
+          description: User identifier from the request
+          example: "user_12345"
+
+    StreamEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SessionEvent"
+        - $ref: "#/components/schemas/DeltaEvent"
+        - $ref: "#/components/schemas/DoneEvent"
+        - $ref: "#/components/schemas/ErrorEvent"
+      discriminator:
+        propertyName: type
+
+    SessionEvent:
+      type: object
+      description: Initial event with session information
+      required:
+        - type
+        - session_id
+        - user_id
+      properties:
+        type:
+          type: string
+          enum: [session]
+        session_id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        user_id:
+          type: string
+          example: "user_12345"
+
+    DeltaEvent:
+      type: object
+      description: Incremental text chunk as response is generated
+      required:
+        - type
+        - content
+      properties:
+        type:
+          type: string
+          enum: [delta]
+        content:
+          type: string
+          description: Incremental text chunk
+          example: "Hello! I'm"
+
+    DoneEvent:
+      type: object
+      description: Final event with complete response
+      required:
+        - type
+        - full_response
+      properties:
+        type:
+          type: string
+          enum: [done]
+        full_response:
+          type: string
+          description: Complete chatbot response
+          example: "Hello! I'm Trackable, your personal shopping assistant."
+
+    ErrorEvent:
+      type: object
+      description: Error event if processing fails
+      required:
+        - type
+        - message
+      properties:
+        type:
+          type: string
+          enum: [error]
+        message:
+          type: string
+          description: Error message
+          example: "Processing failed: Internal error"
+
+    ErrorResponse:
+      type: object
+      required:
+        - detail
+      properties:
+        detail:
+          type: string
+          description: Error message describing what went wrong
+          example: "Chat processing failed: Internal error"
+
+  examples:
+    NewConversation:
+      summary: Start a new conversation
+      value:
+        message: "Hello! What is Trackable?"
+        user_id: "user_12345"
+
+    ContinueConversation:
+      summary: Continue existing conversation
+      value:
+        message: "What can you help me with?"
+        user_id: "user_12345"
+        session_id: "550e8400-e29b-41d4-a716-446655440000"
+
+    ChatResponseExample:
+      summary: Successful chat response
+      value:
+        response: "Hello! I'm Trackable, your personal shopping assistant. I help you manage your online shopping orders after purchase."
+        session_id: "550e8400-e29b-41d4-a716-446655440000"
+        user_id: "user_12345"
