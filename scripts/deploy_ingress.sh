@@ -25,8 +25,8 @@ echo "=================================="
 # Ensure we're in the project root
 cd "$(dirname "$0")/.."
 
-# Deploy to Cloud Run with source-based deployment
-echo -e "${YELLOW}📦 Deploying to Cloud Run (this will build the container image)...${NC}"
+# Deploy to Cloud Run with Dockerfile
+echo -e "${YELLOW}📦 Deploying to Cloud Run (this will build the container image using Dockerfile)...${NC}"
 
 gcloud run deploy $SERVICE_NAME \
   --source . \
