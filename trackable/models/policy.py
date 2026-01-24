@@ -140,12 +140,20 @@ class Policy(BaseModel):
 
     The agent interprets these policies to determine available actions
     and deadlines for each order.
+
+    Policies are location-specific as different countries may have
+    different return windows, conditions, and requirements.
     """
 
     # Identity
     id: str = Field(description="Internal policy identifier")
     merchant_id: str = Field(description="Associated merchant ID")
     policy_type: PolicyType = Field(description="Type of policy")
+
+    # Location (policies vary by country)
+    country_code: str = Field(
+        description="ISO 3166-1 alpha-2 country code (e.g., 'US', 'CN', 'GB')"
+    )
 
     # Basic metadata
     name: str = Field(description="Policy name/title")

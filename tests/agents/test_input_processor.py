@@ -13,14 +13,14 @@ import pytest
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Content, Part
 
-from trackable.models.order import Carrier, Item, Money, OrderStatus, SourceType
-from trackable.subagents import (
+from trackable.agents import (
     ExtractedOrderData,
     InputProcessorInput,
     InputProcessorOutput,
     convert_extracted_to_order,
     input_processor_agent,
 )
+from trackable.models.order import Carrier, Item, Money, OrderStatus, SourceType
 
 pytest_plugins = ("pytest_asyncio",)
 

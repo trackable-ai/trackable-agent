@@ -14,6 +14,9 @@ from trackable.models.intervention import (
     RecommendedAction,
 )
 
+# Job models
+from trackable.models.job import Job, JobStatus, JobType
+
 # Order models
 from trackable.models.order import (
     Carrier,
@@ -41,6 +44,9 @@ from trackable.models.policy import (
     ReturnPolicy,
     ReturnShippingResponsibility,
 )
+
+# Source models
+from trackable.models.source import Source
 
 # User models
 from trackable.models.user import (
@@ -75,6 +81,8 @@ __all__ = [
     "ReturnCondition",
     "ReturnPolicy",
     "ReturnShippingResponsibility",
+    # Source models
+    "Source",
     # User models
     "GmailConnection",
     "NotificationPreference",
@@ -89,4 +97,8 @@ __all__ = [
     "InterventionStatus",
     "InterventionType",
     "RecommendedAction",
+    # Job models
+    "Job",
+    "JobStatus",
+    "JobType",
 ]

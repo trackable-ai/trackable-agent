@@ -1,0 +1,36 @@
+# Dockerfile for Trackable Ingress Service (Cloud Run)
+# Provides chatbot API using FastAPI and Google ADK
+
+FROM python:3.14-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install uv for dependency management
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Copy dependency files
+COPY pyproject.toml uv.lock ./
+
+# Install dependencies using uv
+RUN uv sync --frozen --no-dev
+
+# Copy application code
+COPY trackable/ ./trackable/
+
+# Set environment variables for Cloud Run
+ENV PORT=8080
+ENV PYTHONUNBUFFERED=1
+
+# Expose port
+EXPOSE 8080
+
+# Run the application using uvicorn
+# Cloud Run will inject GOOGLE_APPLICATION_CREDENTIALS and other env vars
+CMD ["uv", "run", "uvicorn", "trackable.api.main:app", "--host", "0.0.0.0", "--port", "8080"]

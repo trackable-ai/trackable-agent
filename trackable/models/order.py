@@ -193,6 +193,10 @@ class Order(BaseModel):
     status: OrderStatus = Field(
         default=OrderStatus.DETECTED, description="Order status"
     )
+    country_code: Optional[str] = Field(
+        default=None,
+        description="ISO 3166-1 alpha-2 country code for order location (e.g., 'US', 'CN')",
+    )
 
     # Items and pricing
     items: list[Item] = Field(default_factory=list, description="Order items")
@@ -218,6 +222,9 @@ class Order(BaseModel):
     )
     exchange_window_end: Optional[datetime] = Field(
         default=None, description="Exchange window end date"
+    )
+    is_monitored: bool = Field(
+        default=True, description="Whether user is actively monitoring this order"
     )
 
     # Agent awareness metadata

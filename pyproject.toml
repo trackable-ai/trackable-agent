@@ -10,15 +10,16 @@ dependencies = [
   "cloud-sql-python-connector[pg8000]>=1.20.0",
   "dotenv>=0.9.9",
   "email-validator>=2.3.0",
+  "fastapi>=0.123.10",
   "google-adk>=1.22.1",
   "google-api-python-client>=2.154.0",
   "google-auth-httplib2>=0.2.0",
   "google-auth-oauthlib>=1.2.0",
-  "gunicorn>=24.1.1",
   "httpx>=0.28.1",
   "pillow>=11.2.0",
   "pydantic>=2.12.5",
   "sqlalchemy>=2.0.45",
+  "uvicorn>=0.40.0",
 ]
 
 [dependency-groups]

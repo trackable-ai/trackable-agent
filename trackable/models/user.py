@@ -45,6 +45,12 @@ class GmailConnection(BaseModel):
     last_sync: Optional[datetime] = Field(
         default=None, description="Last email sync timestamp"
     )
+    last_history_id: Optional[str] = Field(
+        default=None, description="Last Gmail historyId for incremental sync"
+    )
+    watch_expiration: Optional[datetime] = Field(
+        default=None, description="Gmail push notification watch expiration"
+    )
     scopes: list[str] = Field(default_factory=list, description="OAuth scopes granted")
     token_valid: bool = Field(
         default=True, description="Whether OAuth token is still valid"

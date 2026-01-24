@@ -7,7 +7,8 @@ Specialized agents for handling specific tasks:
 - shipment_tracker: Track packages across multiple carriers
 """
 
-from trackable.subagents.input_processor import (
+from trackable.agents.chatbot import chatbot_agent
+from trackable.agents.input_processor import (
     ExtractedOrderData,
     InputProcessorInput,
     InputProcessorOutput,
@@ -21,4 +22,5 @@ __all__ = [
     "InputProcessorOutput",
     "ExtractedOrderData",
     "convert_extracted_to_order",
+    "chatbot_agent",
 ]

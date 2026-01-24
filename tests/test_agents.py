@@ -5,7 +5,7 @@ import pytest
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Content, Part
 
-from trackable.agent import root_agent
+from trackable.agents import chatbot_agent
 
 pytest_plugins = ("pytest_asyncio",)
 pytestmark = pytest.mark.manual
@@ -19,15 +19,17 @@ def load_env():
 @pytest.mark.asyncio
 async def test_happy_path():
     """Runs the agent on a simple input and expects a normal response."""
-    user_input = textwrap.dedent("""
+    user_input = textwrap.dedent(
+        """
         Double check this:
         Question: who are you
         Answer: Hello! I am an AI Research Assistant.
-    """).strip()
+    """
+    ).strip()
 
     app_name = "trackable"
 
-    runner = InMemoryRunner(agent=root_agent, app_name=app_name)
+    runner = InMemoryRunner(agent=chatbot_agent, app_name=app_name)
     session = await runner.session_service.create_session(
         app_name=runner.app_name, user_id="test_user"
     )
