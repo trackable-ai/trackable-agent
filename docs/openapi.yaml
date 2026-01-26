@@ -24,7 +24,9 @@ tags:
   - name: system
     description: System health and information endpoints
   - name: chat
-    description: Chat conversation endpoints
+    description: OpenAI-compatible chat completions API
+  - name: ingest
+    description: Manual email and image submission endpoints
 
 paths:
   /:
@@ -80,127 +82,108 @@ paths:
                     type: string
                     example: gen-lang-client-0659747538
 
-  /api/chat:
+  /api/v1/chat/completions:
     post:
       tags:
         - chat
-      summary: Send chat message (standard)
+      summary: Create chat completion (OpenAI-compatible)
       description: |
-        Send a message to the chatbot and receive a complete response.
+        Create a chat completion following the OpenAI API format.
 
-        This endpoint provides conversational AI capabilities using Google ADK and Gemini 2.5 Flash.
-        Sessions are managed automatically to maintain conversation context across messages.
+        This endpoint provides conversational AI capabilities using Google ADK and Gemini 2.5 Flash,
+        wrapped in an OpenAI-compatible interface for easy integration with existing tools.
+
+        **Streaming:**
+        Set `stream: true` to receive Server-Sent Events (SSE) with incremental responses.
 
         **Session Management:**
-        - If `session_id` is omitted, a new session is created
-        - Include the returned `session_id` in subsequent messages for conversation continuity
-        - Each user should have a unique `user_id`
-      operationId: chat
+        Sessions are managed per-user via the `user` field. Include the same `user` value
+        in subsequent requests to maintain conversation context.
+      operationId: createChatCompletion
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ChatRequest"
+              $ref: "#/components/schemas/ChatCompletionRequest"
             examples:
-              newConversation:
-                summary: New conversation
+              basic:
+                summary: Basic chat request
                 value:
-                  message: "Hello! What is Trackable?"
-                  user_id: "user_12345"
-              continueConversation:
-                summary: Continue existing conversation
+                  model: "gemini-2.5-flash"
+                  messages:
+                    - role: "user"
+                      content: "Hello! What is Trackable?"
+                  user: "user_12345"
+              withSystem:
+                summary: With system message
                 value:
-                  message: "What can you help me with?"
-                  user_id: "user_12345"
-                  session_id: "550e8400-e29b-41d4-a716-446655440000"
+                  model: "gemini-2.5-flash"
+                  messages:
+                    - role: "system"
+                      content: "You are a helpful shopping assistant."
+                    - role: "user"
+                      content: "What can you help me with?"
+                  user: "user_12345"
+              streaming:
+                summary: Streaming request
+                value:
+                  model: "gemini-2.5-flash"
+                  messages:
+                    - role: "user"
+                      content: "Tell me about order tracking"
+                  stream: true
+                  user: "user_12345"
       responses:
         "200":
-          description: Successful response
+          description: Successful completion (non-streaming)
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChatResponse"
+                $ref: "#/components/schemas/ChatCompletionResponse"
               example:
-                response: "Hello! I'm Trackable, your personal shopping assistant. I help you manage your online shopping orders after purchase."
-                session_id: "550e8400-e29b-41d4-a716-446655440000"
-                user_id: "user_12345"
-        "500":
-          description: Server error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-              example:
-                detail: "Chat processing failed: Internal error"
-
-  /api/chat/stream:
-    post:
-      tags:
-        - chat
-      summary: Send chat message (streaming)
-      description: |
-        Send a message to the chatbot and receive a streaming response in real-time.
-
-        This endpoint provides real-time streaming of the chatbot's response using
-        Server-Sent Events (SSE). This allows the frontend to display responses
-        as they are generated, providing better user experience.
-
-        **Event Types:**
-        - `session`: Initial event with session_id and user_id
-        - `delta`: Incremental text chunks as they're generated
-        - `done`: Final event with the complete response
-        - `error`: Error event if processing fails
-
-        **Response Format:**
-        Each event is sent as:
-        ```
-        data: <json-payload>\n\n
-        ```
-      operationId: chatStream
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ChatRequest"
-            examples:
-              streamRequest:
-                summary: Streaming chat request
-                value:
-                  message: "Tell me about order tracking"
-                  user_id: "user_12345"
-      responses:
-        "200":
-          description: Server-Sent Events stream
-          content:
+                id: "chatcmpl-abc123def456"
+                object: "chat.completion"
+                created: 1706300000
+                model: "gemini-2.5-flash"
+                choices:
+                  - index: 0
+                    message:
+                      role: "assistant"
+                      content: "Hello! I'm Trackable, your personal shopping assistant."
+                    finish_reason: "stop"
+                usage:
+                  prompt_tokens: 10
+                  completion_tokens: 15
+                  total_tokens: 25
             text/event-stream:
               schema:
                 type: string
-                format: binary
                 description: |
-                  Stream of SSE events. Each event is a JSON object with a `type` field.
+                  SSE stream of chat completion chunks (when stream=true).
 
-                  Event sequence:
-                  1. Session event (once)
-                  2. Delta events (multiple, as response generates)
-                  3. Done event (once, with full response)
+                  Each chunk follows the format:
+                  ```
+                  data: {"id":"chatcmpl-...","choices":[{"delta":{"content":"..."}}]}
+                  ```
 
-                  Or an error event if something fails.
+                  Stream ends with:
+                  ```
+                  data: [DONE]
+                  ```
               examples:
                 streamResponse:
-                  summary: Example event stream
+                  summary: Streaming response
                   value: |
-                    data: {"type":"session","session_id":"550e8400-e29b-41d4-a716-446655440000","user_id":"user_12345"}
+                    data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1706300000,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
 
-                    data: {"type":"delta","content":"I can help"}
+                    data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1706300000,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{"content":"Hello!"},"finish_reason":null}]}
 
-                    data: {"type":"delta","content":" you track"}
+                    data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1706300000,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{"content":" I'm Trackable."},"finish_reason":null}]}
 
-                    data: {"type":"delta","content":" your orders"}
+                    data: {"id":"chatcmpl-abc123","object":"chat.completion.chunk","created":1706300000,"model":"gemini-2.5-flash","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
 
-                    data: {"type":"done","full_response":"I can help you track your orders from various online retailers..."}
-
+                    data: [DONE]
           headers:
             Cache-Control:
               schema:
@@ -214,6 +197,70 @@ paths:
               schema:
                 type: string
                 example: "no"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: "messages: field required"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: "Chat completion failed: Internal error"
+
+  /api/v1/ingest/email:
+    post:
+      tags:
+        - ingest
+      summary: Submit email for order extraction
+      description: |
+        Submit an email for order extraction. Creates a job that is processed
+        asynchronously by the Worker service via Cloud Tasks.
+
+        The email content will be parsed by the input processor agent to extract
+        order information including merchant, items, prices, and tracking details.
+      operationId: ingestEmail
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestEmailRequest"
+            examples:
+              basic:
+                summary: Basic email submission
+                value:
+                  email_content: "From: orders@amazon.com\nSubject: Your order has shipped\n\nOrder #123-456 has shipped..."
+              withMetadata:
+                summary: With metadata
+                value:
+                  email_content: "Order confirmation from Nike..."
+                  email_subject: "Your Nike order confirmation"
+                  email_from: "orders@nike.com"
+      responses:
+        "200":
+          description: Email submitted for processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IngestResponse"
+              example:
+                job_id: "550e8400-e29b-41d4-a716-446655440000"
+                source_id: "660e8400-e29b-41d4-a716-446655440001"
+                status: "queued"
+                message: "Email submitted for processing. Use the job_id to check status."
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
           content:
@@ -221,50 +268,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /api/chat/session/{session_id}:
-    delete:
+  /api/v1/ingest/image:
+    post:
       tags:
-        - chat
-      summary: Delete chat session
+        - ingest
+      summary: Submit screenshot for order extraction
       description: |
-        Delete a chat session to clear conversation history.
+        Submit a screenshot for order extraction. Creates a job that is processed
+        asynchronously by the Worker service via Cloud Tasks.
 
-        Note: Sessions in the current implementation use InMemoryRunner and are
-        automatically cleaned up. This endpoint is a placeholder for future
-        persistent session management.
-      operationId: deleteSession
-      parameters:
-        - name: session_id
-          in: path
-          required: true
-          description: Session ID to delete
-          schema:
-            type: string
-            format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        - name: user_id
-          in: query
-          required: false
-          description: User identifier
-          schema:
-            type: string
-            default: default_user
-          example: "user_12345"
+        The image will be analyzed by the input processor agent (with vision capability)
+        to extract order information. Duplicate images are detected via SHA-256 hash.
+      operationId: ingestImage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestImageRequest"
+            examples:
+              basic:
+                summary: Basic image submission
+                value:
+                  image_data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+              withFilename:
+                summary: With filename
+                value:
+                  image_data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+                  filename: "amazon_order.png"
       responses:
         "200":
-          description: Session deleted successfully
+          description: Image submitted for processing (or duplicate detected)
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: "Session 550e8400-e29b-41d4-a716-446655440000 deleted"
-                  session_id:
-                    type: string
-                    format: uuid
-                    example: "550e8400-e29b-41d4-a716-446655440000"
+                $ref: "#/components/schemas/IngestResponse"
+              examples:
+                queued:
+                  summary: Image queued for processing
+                  value:
+                    job_id: "550e8400-e29b-41d4-a716-446655440000"
+                    source_id: "660e8400-e29b-41d4-a716-446655440001"
+                    status: "queued"
+                    message: "Image submitted for processing. Use the job_id to check status."
+                duplicate:
+                  summary: Duplicate image detected
+                  value:
+                    job_id: ""
+                    source_id: "770e8400-e29b-41d4-a716-446655440002"
+                    status: "duplicate"
+                    message: "Duplicate image detected. Existing order: 880e8400-e29b-41d4-a716-446655440003"
+        "400":
+          description: Invalid image data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                detail: "Invalid base64 image data: Incorrect padding"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: Server error
           content:
@@ -292,124 +359,252 @@ components:
         ```
 
   schemas:
-    ChatRequest:
+    # OpenAI-compatible Chat Completion schemas
+    ChatCompletionRequest:
       type: object
       required:
-        - message
-        - user_id
+        - messages
       properties:
-        message:
+        model:
           type: string
-          description: User's message to send to the chatbot
-          minLength: 1
-          example: "Hello! What is Trackable?"
-        user_id:
-          type: string
-          description: Unique identifier for the user
-          minLength: 1
-          example: "user_12345"
-        session_id:
-          type: string
-          format: uuid
-          description: |
-            Optional session ID for conversation continuity.
-            If not provided, a new session will be created.
+          description: Model to use (ignored, uses configured agent model)
+          default: "gemini-2.5-flash"
+          example: "gemini-2.5-flash"
+        messages:
+          type: array
+          description: List of messages in the conversation
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ChatMessage"
+        stream:
+          type: boolean
+          description: Whether to stream the response
+          default: false
+        temperature:
+          type: number
+          description: Sampling temperature (0-2)
+          minimum: 0
+          maximum: 2
           nullable: true
-          example: "550e8400-e29b-41d4-a716-446655440000"
-
-    ChatResponse:
-      type: object
-      required:
-        - response
-        - session_id
-        - user_id
-      properties:
-        response:
+        max_tokens:
+          type: integer
+          description: Maximum tokens to generate
+          nullable: true
+        user:
           type: string
-          description: Chatbot's complete response message
-          example: "Hello! I'm Trackable, your personal shopping assistant."
-        session_id:
-          type: string
-          format: uuid
-          description: Session ID for this conversation (use in subsequent messages)
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        user_id:
-          type: string
-          description: User identifier from the request
+          description: User identifier for session management
+          nullable: true
           example: "user_12345"
 
-    StreamEvent:
-      oneOf:
-        - $ref: "#/components/schemas/SessionEvent"
-        - $ref: "#/components/schemas/DeltaEvent"
-        - $ref: "#/components/schemas/DoneEvent"
-        - $ref: "#/components/schemas/ErrorEvent"
-      discriminator:
-        propertyName: type
-
-    SessionEvent:
+    ChatMessage:
       type: object
-      description: Initial event with session information
       required:
-        - type
-        - session_id
-        - user_id
-      properties:
-        type:
-          type: string
-          enum: [session]
-        session_id:
-          type: string
-          format: uuid
-          example: "550e8400-e29b-41d4-a716-446655440000"
-        user_id:
-          type: string
-          example: "user_12345"
-
-    DeltaEvent:
-      type: object
-      description: Incremental text chunk as response is generated
-      required:
-        - type
+        - role
         - content
       properties:
-        type:
+        role:
           type: string
-          enum: [delta]
+          enum: [system, user, assistant]
+          description: The role of the message author
+          example: "user"
         content:
           type: string
-          description: Incremental text chunk
-          example: "Hello! I'm"
+          description: The content of the message
+          example: "Hello! What is Trackable?"
 
-    DoneEvent:
+    ChatCompletionResponse:
       type: object
-      description: Final event with complete response
       required:
-        - type
-        - full_response
+        - id
+        - object
+        - created
+        - model
+        - choices
       properties:
-        type:
+        id:
           type: string
-          enum: [done]
-        full_response:
+          description: Unique identifier for this completion
+          example: "chatcmpl-abc123def456"
+        object:
           type: string
-          description: Complete chatbot response
+          enum: [chat.completion]
+          example: "chat.completion"
+        created:
+          type: integer
+          description: Unix timestamp of when the completion was created
+          example: 1706300000
+        model:
+          type: string
+          description: Model used for completion
+          example: "gemini-2.5-flash"
+        choices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatCompletionChoice"
+        usage:
+          $ref: "#/components/schemas/ChatCompletionUsage"
+
+    ChatCompletionChoice:
+      type: object
+      required:
+        - index
+        - message
+        - finish_reason
+      properties:
+        index:
+          type: integer
+          example: 0
+        message:
+          $ref: "#/components/schemas/ChatCompletionMessage"
+        finish_reason:
+          type: string
+          enum: [stop, length, content_filter]
+          nullable: true
+          example: "stop"
+
+    ChatCompletionMessage:
+      type: object
+      required:
+        - role
+        - content
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+          example: "assistant"
+        content:
+          type: string
           example: "Hello! I'm Trackable, your personal shopping assistant."
 
-    ErrorEvent:
+    ChatCompletionUsage:
       type: object
-      description: Error event if processing fails
+      properties:
+        prompt_tokens:
+          type: integer
+          example: 10
+        completion_tokens:
+          type: integer
+          example: 15
+        total_tokens:
+          type: integer
+          example: 25
+
+    ChatCompletionChunk:
+      type: object
+      description: Streaming chunk for chat completion
       required:
-        - type
+        - id
+        - object
+        - created
+        - model
+        - choices
+      properties:
+        id:
+          type: string
+          example: "chatcmpl-abc123def456"
+        object:
+          type: string
+          enum: [chat.completion.chunk]
+          example: "chat.completion.chunk"
+        created:
+          type: integer
+          example: 1706300000
+        model:
+          type: string
+          example: "gemini-2.5-flash"
+        choices:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChatCompletionChunkChoice"
+
+    ChatCompletionChunkChoice:
+      type: object
+      properties:
+        index:
+          type: integer
+          example: 0
+        delta:
+          $ref: "#/components/schemas/ChatCompletionChunkDelta"
+        finish_reason:
+          type: string
+          enum: [stop, length, content_filter]
+          nullable: true
+
+    ChatCompletionChunkDelta:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [assistant]
+          nullable: true
+        content:
+          type: string
+          nullable: true
+
+    # Ingest API schemas
+    IngestEmailRequest:
+      type: object
+      required:
+        - email_content
+      properties:
+        email_content:
+          type: string
+          description: Raw email content (EML format or plain text)
+          minLength: 1
+          example: "From: orders@amazon.com\nSubject: Your order\n\nOrder confirmed!"
+        email_subject:
+          type: string
+          description: Email subject line (optional)
+          nullable: true
+          example: "Your order has shipped"
+        email_from:
+          type: string
+          description: Sender email address (optional)
+          nullable: true
+          example: "orders@amazon.com"
+
+    IngestImageRequest:
+      type: object
+      required:
+        - image_data
+      properties:
+        image_data:
+          type: string
+          description: Base64 encoded image data
+          minLength: 1
+        filename:
+          type: string
+          description: Original filename (optional)
+          nullable: true
+          example: "screenshot.png"
+
+    IngestResponse:
+      type: object
+      required:
+        - job_id
+        - source_id
+        - status
         - message
       properties:
-        type:
+        job_id:
           type: string
-          enum: [error]
+          format: uuid
+          description: Job ID for tracking processing status
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        source_id:
+          type: string
+          format: uuid
+          description: Source ID for the submitted content
+          example: "660e8400-e29b-41d4-a716-446655440001"
+        status:
+          type: string
+          enum: [queued, duplicate]
+          description: Initial status (queued or duplicate if image already processed)
+          example: "queued"
         message:
           type: string
-          description: Error message
-          example: "Processing failed: Internal error"
+          description: Human-readable status message
+          example: "Email submitted for processing. Use the job_id to check status."
 
     ErrorResponse:
       type: object
@@ -419,25 +614,42 @@ components:
         detail:
           type: string
           description: Error message describing what went wrong
-          example: "Chat processing failed: Internal error"
+          example: "Chat completion failed: Internal error"
 
   examples:
-    NewConversation:
-      summary: Start a new conversation
+    BasicChatRequest:
+      summary: Basic chat completion request
       value:
-        message: "Hello! What is Trackable?"
-        user_id: "user_12345"
+        model: "gemini-2.5-flash"
+        messages:
+          - role: "user"
+            content: "Hello! What is Trackable?"
+        user: "user_12345"
 
-    ContinueConversation:
-      summary: Continue existing conversation
+    StreamingChatRequest:
+      summary: Streaming chat completion request
       value:
-        message: "What can you help me with?"
-        user_id: "user_12345"
-        session_id: "550e8400-e29b-41d4-a716-446655440000"
+        model: "gemini-2.5-flash"
+        messages:
+          - role: "user"
+            content: "Tell me about order tracking"
+        stream: true
+        user: "user_12345"
 
-    ChatResponseExample:
-      summary: Successful chat response
+    ChatCompletionExample:
+      summary: Successful chat completion response
       value:
-        response: "Hello! I'm Trackable, your personal shopping assistant. I help you manage your online shopping orders after purchase."
-        session_id: "550e8400-e29b-41d4-a716-446655440000"
-        user_id: "user_12345"
+        id: "chatcmpl-abc123def456"
+        object: "chat.completion"
+        created: 1706300000
+        model: "gemini-2.5-flash"
+        choices:
+          - index: 0
+            message:
+              role: "assistant"
+              content: "Hello! I'm Trackable, your personal shopping assistant."
+            finish_reason: "stop"
+        usage:
+          prompt_tokens: 10
+          completion_tokens: 15
+          total_tokens: 25
