@@ -11,5 +11,8 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "deny": ["Bash(sudo *)"]
   }
 }
