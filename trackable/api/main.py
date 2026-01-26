@@ -76,5 +76,5 @@ async def health_check():
 # Import and include routers
 from trackable.api.routes import chat, ingest
 
-app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(chat.router, prefix="/api/v1", tags=["chat"])
 app.include_router(ingest.router, prefix="/api/v1", tags=["ingest"])

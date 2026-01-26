@@ -1,5 +1,5 @@
 """
-Tests for the chat API endpoints.
+Tests for the OpenAI-compatible chat completions API.
 """
 
 import json
@@ -11,7 +11,6 @@ from fastapi.testclient import TestClient
 from trackable.api.main import app
 
 pytest_plugins = ("pytest_asyncio",)
-pytestmark = pytest.mark.manual
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -20,7 +19,7 @@ def load_env():
 
 
 @pytest.fixture
-def client():
+def client() -> TestClient:
     """Create test client for FastAPI app"""
     return TestClient(app)
 
@@ -28,7 +27,7 @@ def client():
 class TestHealthEndpoints:
     """Test health check and root endpoints"""
 
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self, client: TestClient):
         """Test root endpoint returns API information"""
         response = client.get("/")
         assert response.status_code == 200
@@ -37,7 +36,7 @@ class TestHealthEndpoints:
         assert data["version"] == "0.1.0"
         assert data["status"] == "operational"
 
-    def test_health_endpoint(self, client):
+    def test_health_endpoint(self, client: TestClient):
         """Test health check endpoint"""
         response = client.get("/health")
         assert response.status_code == 200
@@ -46,162 +45,199 @@ class TestHealthEndpoints:
         assert data["service"] == "trackable-ingress"
 
 
-class TestChatEndpoint:
-    """Test standard chat endpoint"""
+@pytest.mark.manual
+class TestChatCompletions:
+    """Test OpenAI-compatible chat completions endpoint"""
 
-    def test_chat_basic(self, client):
-        """Test basic chat interaction"""
+    def test_chat_completions_basic(self, client: TestClient):
+        """Test basic chat completion request"""
         response = client.post(
-            "/api/chat",
+            "/api/v1/chat/completions",
             json={
-                "message": "Hello! What is Trackable?",
-                "user_id": "test_user",
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "Hello! What is Trackable?"}],
+                "user": "test_user",
             },
         )
 
         assert response.status_code == 200
         data = response.json()
 
-        # Verify response structure
-        assert "response" in data
-        assert "session_id" in data
-        assert "user_id" in data
-        assert data["user_id"] == "test_user"
+        # Verify OpenAI response structure
+        assert "id" in data
+        assert data["id"].startswith("chatcmpl-")
+        assert data["object"] == "chat.completion"
+        assert "created" in data
+        assert "model" in data
+        assert "choices" in data
+        assert "usage" in data
 
-        # Verify response is not empty
-        assert len(data["response"]) > 0
-        assert isinstance(data["session_id"], str)
+        # Verify choices
+        assert len(data["choices"]) == 1
+        choice = data["choices"][0]
+        assert choice["index"] == 0
+        assert "message" in choice
+        assert choice["message"]["role"] == "assistant"
+        assert len(choice["message"]["content"]) > 0
+        assert choice["finish_reason"] == "stop"
 
-    def test_chat_with_session_continuity(self, client):
-        """Test chat with session continuity"""
-        # First message
+        # Verify usage
+        assert "prompt_tokens" in data["usage"]
+        assert "completion_tokens" in data["usage"]
+        assert "total_tokens" in data["usage"]
+
+    def test_chat_completions_with_system_message(self, client: TestClient):
+        """Test chat completion with system message"""
+        response = client.post(
+            "/api/v1/chat/completions",
+            json={
+                "model": "gemini-2.5-flash",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are a helpful shopping assistant.",
+                    },
+                    {"role": "user", "content": "Hi there!"},
+                ],
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["choices"][0]["message"]["role"] == "assistant"
+        assert len(data["choices"][0]["message"]["content"]) > 0
+
+    def test_chat_completions_conversation(self, client: TestClient):
+        """Test multi-turn conversation"""
+        # First turn
         response1 = client.post(
-            "/api/chat",
+            "/api/v1/chat/completions",
             json={
-                "message": "My name is Alice",
-                "user_id": "test_user",
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "My name is Alice."}],
+                "user": "test_user_conv",
             },
         )
-
         assert response1.status_code == 200
-        data1 = response1.json()
-        session_id = data1["session_id"]
 
-        # Second message using same session
+        # Second turn - agent should remember the name via session
         response2 = client.post(
-            "/api/chat",
+            "/api/v1/chat/completions",
             json={
-                "message": "What is my name?",
-                "user_id": "test_user",
-                "session_id": session_id,
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "What is my name?"}],
+                "user": "test_user_conv",
             },
         )
-
         assert response2.status_code == 200
         data2 = response2.json()
-
-        # Verify same session
-        assert data2["session_id"] == session_id
-
-        # Response should reference the name (though this depends on agent memory)
-        # This is a basic check that the session continued
-        assert len(data2["response"]) > 0
+        assert len(data2["choices"][0]["message"]["content"]) > 0
 
 
-class TestChatStreamEndpoint:
-    """Test streaming chat endpoint"""
+@pytest.mark.manual
+class TestChatCompletionsStreaming:
+    """Test streaming chat completions"""
 
-    def test_chat_stream_basic(self, client):
-        """Test basic streaming chat interaction"""
+    def test_chat_completions_stream(self, client: TestClient):
+        """Test streaming chat completion"""
         with client.stream(
             "POST",
-            "/api/chat/stream",
+            "/api/v1/chat/completions",
             json={
-                "message": "Hi! Tell me about Trackable in one sentence.",
-                "user_id": "test_user",
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "Say hello in one word."}],
+                "stream": True,
+                "user": "test_user",
             },
         ) as response:
             assert response.status_code == 200
             assert "text/event-stream" in response.headers["content-type"]
 
-            # Collect all events
-            events = []
+            chunks = []
             for line in response.iter_lines():
                 if line.startswith("data: "):
-                    data = json.loads(line[6:])
-                    events.append(data)
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    chunks.append(json.loads(data_str))
 
-            # Verify we received events
-            assert len(events) > 0
+            # Verify we received chunks
+            assert len(chunks) > 0
 
-            # First event should be session info
-            assert events[0]["type"] == "session"
-            assert "session_id" in events[0]
-            assert events[0]["user_id"] == "test_user"
+            # First chunk should have role
+            first_chunk = chunks[0]
+            assert first_chunk["object"] == "chat.completion.chunk"
+            assert "id" in first_chunk
+            assert first_chunk["id"].startswith("chatcmpl-")
+            assert first_chunk["choices"][0]["delta"].get("role") == "assistant"
 
-            # Last event should be done
-            assert events[-1]["type"] == "done"
-            assert "full_response" in events[-1]
-            assert len(events[-1]["full_response"]) > 0
+            # Last chunk should have finish_reason
+            last_chunk = chunks[-1]
+            assert last_chunk["choices"][0]["finish_reason"] == "stop"
 
-            # Should have at least one delta event
-            delta_events = [e for e in events if e["type"] == "delta"]
-            assert len(delta_events) > 0
+            # Middle chunks should have content
+            content_chunks = [
+                c for c in chunks if c["choices"][0]["delta"].get("content")
+            ]
+            assert len(content_chunks) > 0
 
-    def test_chat_stream_with_existing_session(self, client):
-        """Test streaming with existing session"""
-        # Create session with first request
+    def test_chat_completions_stream_collects_full_response(self, client: TestClient):
+        """Test that streaming chunks form a complete response"""
         with client.stream(
             "POST",
-            "/api/chat/stream",
+            "/api/v1/chat/completions",
             json={
-                "message": "Hello",
-                "user_id": "test_user",
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "user", "content": "Count from 1 to 3."}],
+                "stream": True,
             },
         ) as response:
-            # Get session from first event
-            first_line = next(response.iter_lines())
-            session_data = json.loads(first_line[6:])
-            session_id = session_data["session_id"]
+            full_content = ""
+            for line in response.iter_lines():
+                if line.startswith("data: "):
+                    data_str = line[6:]
+                    if data_str == "[DONE]":
+                        break
+                    chunk = json.loads(data_str)
+                    delta_content = chunk["choices"][0]["delta"].get("content", "")
+                    full_content += delta_content
 
-        # Use session in second request
-        with client.stream(
-            "POST",
-            "/api/chat/stream",
-            json={
-                "message": "Follow up message",
-                "user_id": "test_user",
-                "session_id": session_id,
-            },
-        ) as response:
-            first_line = next(response.iter_lines())
-            session_data = json.loads(first_line[6:])
-
-            # Verify same session
-            assert session_data["session_id"] == session_id
+            # Should have collected some content
+            assert len(full_content) > 0
 
 
-class TestSessionManagement:
-    """Test session management endpoints"""
+class TestChatCompletionsValidation:
+    """Test request validation"""
 
-    def test_delete_session(self, client):
-        """Test session deletion"""
-        # Create a session first
+    def test_empty_messages_fails(self, client: TestClient):
+        """Test that empty messages list fails"""
         response = client.post(
-            "/api/chat",
+            "/api/v1/chat/completions",
             json={
-                "message": "Hello",
-                "user_id": "test_user",
+                "model": "gemini-2.5-flash",
+                "messages": [],
             },
         )
-        session_id = response.json()["session_id"]
+        # FastAPI should return 422 for validation error
+        assert response.status_code == 422
 
-        # Delete the session
-        delete_response = client.delete(
-            f"/api/chat/session/{session_id}?user_id=test_user"
+    def test_missing_messages_fails(self, client: TestClient):
+        """Test that missing messages field fails"""
+        response = client.post(
+            "/api/v1/chat/completions",
+            json={
+                "model": "gemini-2.5-flash",
+            },
         )
+        assert response.status_code == 422
 
-        assert delete_response.status_code == 200
-        data = delete_response.json()
-        assert data["session_id"] == session_id
-        assert "deleted" in data["message"].lower()
+    def test_invalid_role_fails(self, client: TestClient):
+        """Test that invalid role fails"""
+        response = client.post(
+            "/api/v1/chat/completions",
+            json={
+                "model": "gemini-2.5-flash",
+                "messages": [{"role": "invalid_role", "content": "Hello"}],
+            },
+        )
+        assert response.status_code == 422
