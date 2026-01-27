@@ -69,6 +69,21 @@ class MerchantRepository(BaseRepository[Merchant]):
 
         return self._row_to_model(row)
 
+    def list_all(self, limit: int = 100, offset: int = 0) -> list[Merchant]:
+        """
+        List all merchants with pagination.
+
+        Args:
+            limit: Maximum number of merchants to return
+            offset: Number of merchants to skip
+
+        Returns:
+            List of Merchant models
+        """
+        stmt = select(self.table).limit(limit).offset(offset)
+        result = self.session.execute(stmt)
+        return [self._row_to_model(row) for row in result.fetchall()]
+
     def upsert_by_domain(self, merchant: Merchant) -> Merchant:
         """
         Insert or update merchant by domain.

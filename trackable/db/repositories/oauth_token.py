@@ -84,6 +84,34 @@ class OAuthTokenRepository(BaseRepository[OAuthToken]):
 
         return self._row_to_model(row)
 
+    def get_by_provider_email(
+        self, provider: str, provider_email: str
+    ) -> OAuthToken | None:
+        """
+        Get OAuth token by provider and email address.
+
+        Useful for looking up users from Pub/Sub notifications
+        that only contain an email address.
+
+        Args:
+            provider: OAuth provider (e.g., 'gmail')
+            provider_email: Email address associated with the provider account
+
+        Returns:
+            OAuthToken or None if not found
+        """
+        stmt = select(self.table).where(
+            self.table.c.provider == provider,
+            self.table.c.provider_email == provider_email,
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_model(row)
+
     def upsert(self, token: OAuthToken) -> OAuthToken:
         """
         Insert or update OAuth token.

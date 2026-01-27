@@ -39,3 +39,13 @@ class ParseImageTask(BaseModel):
     image_data: str | None = Field(
         default=None, description="Base64 encoded image data"
     )
+
+
+class PolicyRefreshTask(BaseModel):
+    """Policy refresh task payload"""
+
+    merchant_id: str = Field(description="Merchant ID to refresh policy for")
+    merchant_domain: str = Field(description="Merchant domain for logging")
+    force_refresh: bool = Field(
+        default=False, description="Force refresh even if policy unchanged"
+    )

@@ -12,7 +12,12 @@ from typing import Any
 from google.cloud import tasks_v2
 from google.protobuf import timestamp_pb2
 
-from trackable.models.task import ParseEmailTask, ParseImageTask
+from trackable.models.task import (
+    GmailSyncTask,
+    ParseEmailTask,
+    ParseImageTask,
+    PolicyRefreshTask,
+)
 from trackable.utils.gcp import get_service_account_email, get_worker_service_url
 
 # Configuration from environment
@@ -90,6 +95,82 @@ def create_parse_image_task(
         endpoint="/tasks/parse-image",
         payload=payload.model_dump(),
         task_id=f"parse-image-{job_id}",
+        delay_seconds=delay_seconds,
+    )
+
+
+def create_gmail_sync_task(
+    user_id: str,
+    user_email: str,
+    history_id: str | None = None,
+    delay_seconds: int = 0,
+) -> str:
+    """
+    Create a Cloud Task to sync Gmail for a user.
+
+    Args:
+        user_id: Internal user ID
+        user_email: User's Gmail address
+        history_id: Gmail history ID for incremental sync
+        delay_seconds: Optional delay before task execution
+
+    Returns:
+        Task name (full resource path)
+    """
+    payload = GmailSyncTask(
+        user_id=user_id,
+        user_email=user_email,
+        history_id=history_id,
+    )
+
+    # Use email hash to create unique but deterministic task ID
+    import hashlib
+
+    email_hash = hashlib.md5(user_email.encode()).hexdigest()[:8]
+    task_id = f"gmail-sync-{email_hash}-{history_id or 'full'}"
+
+    return _create_task(
+        endpoint="/tasks/gmail-sync",
+        payload=payload.model_dump(),
+        task_id=task_id,
+        delay_seconds=delay_seconds,
+    )
+
+
+def create_policy_refresh_task(
+    merchant_id: str,
+    merchant_domain: str,
+    force_refresh: bool = False,
+    delay_seconds: int = 0,
+) -> str:
+    """
+    Create a Cloud Task to refresh a merchant's return policy.
+
+    Args:
+        merchant_id: Merchant ID to refresh
+        merchant_domain: Merchant domain for logging
+        force_refresh: Force refresh even if policy unchanged
+        delay_seconds: Optional delay before task execution
+
+    Returns:
+        Task name (full resource path)
+    """
+    payload = PolicyRefreshTask(
+        merchant_id=merchant_id,
+        merchant_domain=merchant_domain,
+        force_refresh=force_refresh,
+    )
+
+    # Use merchant domain hash for unique task ID
+    import hashlib
+
+    domain_hash = hashlib.md5(merchant_domain.encode()).hexdigest()[:8]
+    task_id = f"policy-refresh-{domain_hash}"
+
+    return _create_task(
+        endpoint="/tasks/policy-refresh",
+        payload=payload.model_dump(),
+        task_id=task_id,
         delay_seconds=delay_seconds,
     )
 
