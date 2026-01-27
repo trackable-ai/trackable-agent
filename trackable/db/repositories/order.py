@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, select
+from sqlalchemy import Table, func, select
 
 from trackable.db.repositories.base import (
     BaseRepository,
@@ -144,6 +144,56 @@ class OrderRepository(BaseRepository[Order]):
 
         result = self.session.execute(stmt)
         return [self._row_to_model(row) for row in result.fetchall()]
+
+    def count_by_user(
+        self,
+        user_id: str,
+        status: OrderStatus | None = None,
+    ) -> int:
+        """
+        Count orders for a user.
+
+        Args:
+            user_id: User ID
+            status: Optional status filter
+
+        Returns:
+            Number of orders
+        """
+        stmt = (
+            select(func.count())
+            .select_from(self.table)
+            .where(self.table.c.user_id == UUID(user_id))
+        )
+
+        if status:
+            stmt = stmt.where(self.table.c.status == status.value)
+
+        result = self.session.execute(stmt)
+        return result.scalar() or 0
+
+    def get_by_id_for_user(self, order_id: str, user_id: str) -> Order | None:
+        """
+        Get order by ID, scoped to a specific user.
+
+        Args:
+            order_id: Order ID
+            user_id: User ID (for authorization)
+
+        Returns:
+            Order if found and belongs to user, None otherwise
+        """
+        stmt = select(self.table).where(
+            self.table.c.id == UUID(order_id),
+            self.table.c.user_id == UUID(user_id),
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_model(row)
 
     def get_by_order_number(self, user_id: str, order_number: str) -> Order | None:
         """

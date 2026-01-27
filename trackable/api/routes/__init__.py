@@ -2,4 +2,4 @@
 API route modules.
 """
 
-__all__ = ["chat"]
+__all__ = ["chat", "ingest", "orders"]

@@ -305,3 +305,25 @@ class Order(BaseModel):
             }
         }
     )
+
+
+# API Request/Response Models
+
+
+class OrderListResponse(BaseModel):
+    """Response for listing orders with pagination."""
+
+    orders: list[Order] = Field(description="List of orders")
+    total: int = Field(description="Total number of orders matching the query")
+    limit: int = Field(description="Maximum number of orders returned")
+    offset: int = Field(description="Number of orders skipped")
+
+
+class OrderUpdateRequest(BaseModel):
+    """Request body for updating an order."""
+
+    status: Optional[OrderStatus] = Field(default=None, description="New order status")
+    note: Optional[str] = Field(default=None, description="Note to append to the order")
+    is_monitored: Optional[bool] = Field(
+        default=None, description="Whether to monitor this order"
+    )

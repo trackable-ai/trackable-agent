@@ -5,7 +5,7 @@ Provides generic database operations that can be inherited by specific repositor
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Generic, TypeVar
+from typing import Any, Generic, Sequence, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -22,7 +22,7 @@ def model_to_jsonb(model: BaseModel | None) -> dict | None:
     return model.model_dump(mode="json")
 
 
-def models_to_jsonb(models: list[BaseModel]) -> list[dict]:
+def models_to_jsonb(models: Sequence[BaseModel]) -> list[dict]:
     """Serialize list of Pydantic models for JSONB storage."""
     return [m.model_dump(mode="json") for m in models]
 
