@@ -1,4 +1,1 @@
-*
-
-!.gitignore
-!settings.json
+settings.local.json
