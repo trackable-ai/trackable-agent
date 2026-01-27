@@ -173,6 +173,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] JWT/OIDC token validation middleware
     - [ ] Extract `user_id` from authentication token (replace hardcoded parameter)
     - [ ] Session management for chat conversations
+        - [ ] Support multiple sessions per user (current `_user_sessions` dict in `chat.py` only allows one session per user)
 - [ ] Update API routes to use authenticated user
     - [ ] `trackable/api/routes/orders.py` - Remove `user_id` parameter
     - [ ] `trackable/api/routes/ingest.py` - Remove `user_id` parameter
@@ -230,6 +231,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-01-26
 
+- 📝 Added TODO: Support multiple chat sessions per user (current implementation only allows one session)
 - ✅ Implemented Pub/Sub handlers (`trackable/api/routes/pubsub.py`)
     - `POST /pubsub/gmail` - Gmail notification handler (decodes notification, looks up user by email, creates Job record, creates Cloud Task)
     - `POST /pubsub/policy` - Policy refresh trigger (lists merchants, creates Job records, creates Cloud Tasks with staggered delays)
