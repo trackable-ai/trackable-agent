@@ -14,6 +14,24 @@ from fastapi import FastAPI
 load_dotenv()
 
 
+def _init_database():
+    """Initialize database connection if configured."""
+    from trackable.db import DatabaseConnection
+
+    instance_connection_name = os.getenv("INSTANCE_CONNECTION_NAME")
+    if not instance_connection_name:
+        print("   Database: Not configured (INSTANCE_CONNECTION_NAME not set)")
+        return False
+
+    try:
+        DatabaseConnection.initialize()
+        print("   Database: Connected to Cloud SQL")
+        return True
+    except Exception as e:
+        print(f"   Database: Failed to connect - {e}")
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown events."""
@@ -22,9 +40,17 @@ async def lifespan(app: FastAPI):
     print(f"   Environment: {os.getenv('GOOGLE_CLOUD_PROJECT', 'local')}")
     print(f"   Model: gemini-2.5-flash")
 
+    db_initialized = _init_database()
+
     yield
 
     # Shutdown
+    if db_initialized:
+        from trackable.db import DatabaseConnection
+
+        DatabaseConnection.close()
+        print("   Database: Connection closed")
+
     print("👋 Shutting down Trackable Worker Service...")
 
 

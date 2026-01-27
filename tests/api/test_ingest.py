@@ -49,9 +49,9 @@ class TestIngestEmail:
             assert data["status"] == "queued"
             assert "message" in data
 
-            # Verify IDs have correct prefixes
-            assert data["job_id"].startswith("job_")
-            assert data["source_id"].startswith("src_")
+            # Verify IDs are valid UUIDs
+            assert len(data["job_id"]) == 36  # UUID format
+            assert len(data["source_id"]) == 36
 
             # Verify task was created with correct parameters
             mock_create_task.assert_called_once()
@@ -145,9 +145,9 @@ class TestIngestImage:
             assert data["status"] == "queued"
             assert "message" in data
 
-            # Verify IDs have correct prefixes
-            assert data["job_id"].startswith("job_")
-            assert data["source_id"].startswith("src_")
+            # Verify IDs are valid UUIDs
+            assert len(data["job_id"]) == 36  # UUID format
+            assert len(data["source_id"]) == 36
 
             # Verify task was created with correct parameters
             mock_create_task.assert_called_once()
@@ -252,7 +252,7 @@ class TestIngestWithRealSamples:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "queued"
-            assert data["job_id"].startswith("job_")
+            assert len(data["job_id"]) == 36  # UUID format
 
     def test_ingest_real_screenshot_sample(
         self, client: TestClient, sample_screenshot_base64: str
@@ -274,4 +274,4 @@ class TestIngestWithRealSamples:
             assert response.status_code == 200
             data = response.json()
             assert data["status"] == "queued"
-            assert data["job_id"].startswith("job_")
+            assert len(data["job_id"]) == 36  # UUID format

@@ -50,7 +50,6 @@ from trackable.models.source import Source
 
 # User models
 from trackable.models.user import (
-    GmailConnection,
     NotificationPreference,
     ReminderSensitivity,
     User,
@@ -84,7 +83,6 @@ __all__ = [
     # Source models
     "Source",
     # User models
-    "GmailConnection",
     "NotificationPreference",
     "ReminderSensitivity",
     "User",

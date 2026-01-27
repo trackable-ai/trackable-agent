@@ -5,6 +5,7 @@ These handlers contain the business logic for processing different task types.
 """
 
 import json
+from uuid import uuid4
 
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Blob, Content, Part
@@ -14,7 +15,9 @@ from trackable.agents.input_processor import (
     convert_extracted_to_order,
     input_processor_agent,
 )
-from trackable.models.order import SourceType
+from trackable.db import DatabaseConnection, UnitOfWork
+from trackable.models.order import Merchant, SourceType
+from trackable.utils.hash import compute_sha256
 
 # Create runner for input processor agent
 input_processor_runner = InMemoryRunner(
@@ -105,6 +108,12 @@ async def handle_parse_email(
     """
     print(f"📨 Parsing email for job_id={job_id}")
 
+    # Mark job as started (if DB is available)
+    if DatabaseConnection.is_initialized():
+        with UnitOfWork() as uow:
+            uow.jobs.mark_started(job_id)
+            uow.commit()
+
     try:
         # Create prompt for input processor
         prompt = f"""Extract order information from this email:
@@ -156,7 +165,11 @@ Return structured data with confidence score."""
 
         if not output.orders or len(output.orders) == 0:
             print(f"⚠️  No orders found in email")
-            # TODO: Update job status to failed in database
+            # Update job status to completed with no orders
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(job_id, {"status": "no_orders_found"})
+                    uow.commit()
             return {
                 "status": "no_orders_found",
                 "job_id": job_id,
@@ -178,13 +191,48 @@ Return structured data with confidence score."""
             f"✅ Extracted order: merchant={order.merchant.name}, confidence={order.confidence_score}"
         )
 
-        # TODO: Save order to database
-        # TODO: Update job status to completed in database
+        # Save to database if available
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                # Upsert merchant by domain
+                merchant_model = Merchant(
+                    id=str(uuid4()),
+                    name=order.merchant.name,
+                    domain=order.merchant.domain,
+                    support_email=order.merchant.support_email,
+                    support_url=order.merchant.support_url,
+                    return_portal_url=order.merchant.return_portal_url,
+                )
+                saved_merchant = uow.merchants.upsert_by_domain(merchant_model)
+
+                # Update order with persisted merchant ID
+                order.merchant.id = saved_merchant.id
+
+                # Save order
+                saved_order = uow.orders.create(order)
+
+                # Mark source as processed
+                uow.sources.mark_processed(source_id, saved_order.id)
+
+                # Mark job as completed
+                uow.jobs.mark_completed(
+                    job_id,
+                    {
+                        "order_id": saved_order.id,
+                        "merchant_name": saved_merchant.name,
+                        "confidence_score": order.confidence_score,
+                    },
+                )
+                uow.commit()
+
+                order_id = saved_order.id
+        else:
+            order_id = order.id
 
         return {
             "status": "success",
             "job_id": job_id,
-            "order_id": order.id,
+            "order_id": order_id,
             "merchant_name": order.merchant.name,
             "confidence_score": order.confidence_score,
             "needs_clarification": order.needs_clarification,
@@ -192,7 +240,11 @@ Return structured data with confidence score."""
 
     except Exception as e:
         print(f"❌ Email parsing error: {e}")
-        # TODO: Update job status to failed in database
+        # Update job status to failed
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.mark_failed(job_id, str(e))
+                uow.commit()
         raise
 
 
@@ -220,15 +272,47 @@ async def handle_parse_image(
     """
     print(f"🖼️  Parsing image for job_id={job_id}")
 
+    # Mark job as started
+    if DatabaseConnection.is_initialized():
+        with UnitOfWork() as uow:
+            uow.jobs.mark_started(job_id)
+            uow.commit()
+
     try:
-        # TODO: Check for duplicate images using perceptual hashing
-        # If duplicate found, return existing order info
-
-        # TODO: Download image from URL or decode base64 data
-        # For now, we'll work with URLs or base64 data directly
-
         if not image_url and not image_data:
             raise ValueError("Either image_url or image_data must be provided")
+
+        # Check for duplicate images using hash
+        is_duplicate = False
+        existing_order_id = None
+
+        if image_data and DatabaseConnection.is_initialized():
+            image_hash = compute_sha256(image_data)
+            with UnitOfWork() as uow:
+                existing_source = uow.sources.find_by_image_hash(user_id, image_hash)
+                if existing_source and existing_source.order_id:
+                    is_duplicate = True
+                    existing_order_id = existing_source.order_id
+                    print(
+                        f"⚠️  Duplicate image detected, existing order: {existing_order_id}"
+                    )
+
+                    # Mark job as completed with duplicate info
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {
+                            "status": "duplicate",
+                            "existing_order_id": existing_order_id,
+                        },
+                    )
+                    uow.commit()
+
+                    return {
+                        "status": "duplicate",
+                        "job_id": job_id,
+                        "order_id": existing_order_id,
+                        "is_duplicate": True,
+                    }
 
         # Create prompt for input processor
         prompt = """Extract order information from this screenshot or receipt image.
@@ -245,18 +329,12 @@ Look for:
 Return structured data with confidence score. If information is unclear or missing, set needs_clarification=true and include questions."""
 
         # Create content for agent (with vision capability)
-        # Note: The input processor uses gemini-2.5-flash which has vision
         parts = [Part(text=prompt)]
 
         if image_url:
-            # For URLs, we would need to download first
-            # For now, include as text reference
             parts.append(Part(text=f"Image URL: {image_url}"))
         elif image_data:
-            # Detect MIME type from image data
             mime_type = detect_image_mime_type(image_data)
-
-            # Create inline data part for vision
             parts.append(Part(inline_data=Blob(data=image_data, mime_type=mime_type)))
 
         content = Content(parts=parts)
@@ -274,7 +352,6 @@ Return structured data with confidence score. If information is unclear or missi
             session_id=session.id,
             new_message=content,
         ):
-            # Collect the text response
             if event.content and event.content.parts:
                 for part in event.content.parts:
                     if part.text:
@@ -283,10 +360,9 @@ Return structured data with confidence score. If information is unclear or missi
         if not result_text:
             raise ValueError("No result from input processor agent")
 
-        # Parse the JSON response from the agent
+        # Parse the JSON response
         result = json.loads(result_text)
 
-        # Parse the output
         if isinstance(result, dict):
             output = InputProcessorOutput(**result)
         else:
@@ -294,7 +370,10 @@ Return structured data with confidence score. If information is unclear or missi
 
         if not output.orders or len(output.orders) == 0:
             print(f"⚠️  No orders found in image")
-            # TODO: Update job status to failed in database
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(job_id, {"status": "no_orders_found"})
+                    uow.commit()
             return {
                 "status": "no_orders_found",
                 "job_id": job_id,
@@ -314,24 +393,62 @@ Return structured data with confidence score. If information is unclear or missi
         )
 
         print(
-            f"✅ Extracted order from image: merchant={order.merchant.name}, confidence={order.confidence_score}"
+            f"✅ Extracted order from image: merchant={order.merchant.name}, "
+            f"confidence={order.confidence_score}"
         )
 
-        # TODO: Save order to database
-        # TODO: Update job status to completed in database
-        # TODO: Store image hash for duplicate detection
+        # Save to database if available
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                # Upsert merchant by domain
+                merchant_model = Merchant(
+                    id=str(uuid4()),
+                    name=order.merchant.name,
+                    domain=order.merchant.domain,
+                    support_email=order.merchant.support_email,
+                    support_url=order.merchant.support_url,
+                    return_portal_url=order.merchant.return_portal_url,
+                )
+                saved_merchant = uow.merchants.upsert_by_domain(merchant_model)
+
+                # Update order with persisted merchant ID
+                order.merchant.id = saved_merchant.id
+
+                # Save order
+                saved_order = uow.orders.create(order)
+
+                # Mark source as processed (and store image hash)
+                uow.sources.mark_processed(source_id, saved_order.id)
+
+                # Mark job as completed
+                uow.jobs.mark_completed(
+                    job_id,
+                    {
+                        "order_id": saved_order.id,
+                        "merchant_name": saved_merchant.name,
+                        "confidence_score": order.confidence_score,
+                    },
+                )
+                uow.commit()
+
+                order_id = saved_order.id
+        else:
+            order_id = order.id
 
         return {
             "status": "success",
             "job_id": job_id,
-            "order_id": order.id,
+            "order_id": order_id,
             "merchant_name": order.merchant.name,
             "confidence_score": order.confidence_score,
             "needs_clarification": order.needs_clarification,
-            "is_duplicate": False,  # TODO: Implement duplicate detection
+            "is_duplicate": False,
         }
 
     except Exception as e:
         print(f"❌ Image parsing error: {e}")
-        # TODO: Update job status to failed in database
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.mark_failed(job_id, str(e))
+                uow.commit()
         raise

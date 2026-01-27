@@ -6,24 +6,25 @@ for order extraction. Each submission creates a job that is processed
 asynchronously by the Worker service via Cloud Tasks.
 """
 
-import uuid
+import base64
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
 
 from trackable.api.cloud_tasks import create_parse_email_task, create_parse_image_task
+from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.ingest import (
     IngestEmailRequest,
     IngestImageRequest,
     IngestResponse,
 )
+from trackable.models.job import Job, JobStatus, JobType
+from trackable.models.order import SourceType
+from trackable.models.source import Source
+from trackable.utils.hash import compute_sha256
 
 router = APIRouter()
-
-
-def generate_id(prefix: str) -> str:
-    """Generate a unique ID with a prefix."""
-    return f"{prefix}_{uuid.uuid4().hex[:12]}"
 
 
 @router.post("/ingest/email", response_model=IngestResponse)
@@ -45,12 +46,42 @@ async def ingest_email(
     Returns:
         IngestResponse with job_id for tracking
     """
-    # Generate IDs for job and source
-    job_id = generate_id("job")
-    source_id = generate_id("src")
+    now = datetime.now(timezone.utc)
+    job_id = str(uuid4())
+    source_id = str(uuid4())
 
-    # TODO: Save Job to database with status "queued"
-    # TODO: Save Source to database
+    # Save Job and Source to database
+    if DatabaseConnection.is_initialized():
+        with UnitOfWork() as uow:
+            job = Job(
+                id=job_id,
+                user_id=user_id,
+                job_type=JobType.PARSE_EMAIL,
+                status=JobStatus.QUEUED,
+                input_data={
+                    "source_id": source_id,
+                    "email_subject": request.email_subject,
+                    "email_from": request.email_from,
+                },
+                queued_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            uow.jobs.create(job)
+
+            source = Source(
+                id=source_id,
+                user_id=user_id,
+                source_type=SourceType.EMAIL,
+                email_subject=request.email_subject,
+                email_from=request.email_from,
+                email_date=now,
+                processed=False,
+                created_at=now,
+                updated_at=now,
+            )
+            uow.sources.create(source)
+            uow.commit()
 
     try:
         # Create Cloud Task to process the email
@@ -62,8 +93,17 @@ async def ingest_email(
         )
         print(f"Created task: {task_name}")
 
+        # Update job with task name
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.update_by_id(job_id, task_name=task_name)
+                uow.commit()
+
     except Exception as e:
-        # TODO: Update job status to "failed" in database
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.mark_failed(job_id, str(e))
+                uow.commit()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create processing task: {str(e)}",
@@ -96,13 +136,62 @@ async def ingest_image(
     Returns:
         IngestResponse with job_id for tracking
     """
-    # Generate IDs for job and source
-    job_id = generate_id("job")
-    source_id = generate_id("src")
+    now = datetime.now(timezone.utc)
+    job_id = str(uuid4())
+    source_id = str(uuid4())
 
-    # TODO: Save Job to database with status "queued"
-    # TODO: Save Source to database with image_hash for duplicate detection
-    # TODO: Check for duplicate images using perceptual hash
+    # Decode image and compute hash for duplicate detection
+    try:
+        image_bytes = base64.b64decode(request.image_data)
+        image_hash = compute_sha256(image_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid base64 image data: {str(e)}",
+        )
+
+    # Check for duplicate and save Job/Source to database
+    if DatabaseConnection.is_initialized():
+        with UnitOfWork() as uow:
+            # Check for duplicate image
+            existing_source = uow.sources.find_by_image_hash(user_id, image_hash)
+            if existing_source and existing_source.order_id:
+                return IngestResponse(
+                    job_id="",
+                    source_id=existing_source.id,
+                    status="duplicate",
+                    message=f"Duplicate image detected. Existing order: {existing_source.order_id}",
+                )
+
+            # Create Job record
+            job = Job(
+                id=job_id,
+                user_id=user_id,
+                job_type=JobType.PARSE_IMAGE,
+                status=JobStatus.QUEUED,
+                input_data={
+                    "source_id": source_id,
+                    "filename": request.filename,
+                    "image_hash": image_hash,
+                },
+                queued_at=now,
+                created_at=now,
+                updated_at=now,
+            )
+            uow.jobs.create(job)
+
+            # Create Source record with image hash
+            source = Source(
+                id=source_id,
+                user_id=user_id,
+                source_type=SourceType.SCREENSHOT,
+                image_hash=image_hash,
+                processed=False,
+                created_at=now,
+                updated_at=now,
+            )
+            uow.sources.create(source)
+            uow.commit()
 
     try:
         # Create Cloud Task to process the image
@@ -114,8 +203,17 @@ async def ingest_image(
         )
         print(f"Created task: {task_name}")
 
+        # Update job with task name
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.update_by_id(job_id, task_name=task_name)
+                uow.commit()
+
     except Exception as e:
-        # TODO: Update job status to "failed" in database
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.mark_failed(job_id, str(e))
+                uow.commit()
         raise HTTPException(
             status_code=500,
             detail=f"Failed to create processing task: {str(e)}",

@@ -32,31 +32,6 @@ class ReminderSensitivity(StrEnum):
     HIGH = "high"  # All deadlines with multiple reminders
 
 
-class GmailConnection(BaseModel):
-    """Gmail OAuth connection details"""
-
-    connected: bool = Field(description="Whether Gmail is connected")
-    email: Optional[EmailStr] = Field(
-        default=None, description="Connected Gmail address"
-    )
-    connected_at: Optional[datetime] = Field(
-        default=None, description="Connection timestamp"
-    )
-    last_sync: Optional[datetime] = Field(
-        default=None, description="Last email sync timestamp"
-    )
-    last_history_id: Optional[str] = Field(
-        default=None, description="Last Gmail historyId for incremental sync"
-    )
-    watch_expiration: Optional[datetime] = Field(
-        default=None, description="Gmail push notification watch expiration"
-    )
-    scopes: list[str] = Field(default_factory=list, description="OAuth scopes granted")
-    token_valid: bool = Field(
-        default=True, description="Whether OAuth token is still valid"
-    )
-
-
 class UserPreferences(BaseModel):
     """User preferences for agent behavior"""
 
@@ -116,11 +91,6 @@ class User(BaseModel):
     # Status
     status: UserStatus = Field(default=UserStatus.ACTIVE, description="Account status")
 
-    # Connections
-    gmail_connection: Optional[GmailConnection] = Field(
-        default=None, description="Gmail connection details"
-    )
-
     # Preferences
     preferences: UserPreferences = Field(
         default_factory=UserPreferences, description="User preferences"
@@ -155,14 +125,6 @@ class User(BaseModel):
                 "email": "user@example.com",
                 "name": "Jane Doe",
                 "status": "active",
-                "gmail_connection": {
-                    "connected": True,
-                    "email": "user@gmail.com",
-                    "connected_at": "2024-01-15T10:00:00Z",
-                    "last_sync": "2024-01-20T14:30:00Z",
-                    "scopes": ["https://www.googleapis.com/auth/gmail.readonly"],
-                    "token_valid": True,
-                },
                 "preferences": {
                     "notification_channels": ["email", "in_app"],
                     "reminder_sensitivity": "medium",

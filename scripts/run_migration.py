@@ -79,6 +79,46 @@ def run_migration(migration_file: Path, engine: Engine):
         sys.exit(1)
 
 
+def grant_postgres_access(engine: Engine):
+    """Grant postgres user access to all tables.
+
+    When using IAM authentication, tables are owned by the service account.
+    This grants the postgres user access so tables can be viewed in Cloud SQL Studio.
+    """
+    print("\n🔐 Granting postgres user access to tables...")
+
+    try:
+        with engine.begin() as conn:
+            # Grant usage on schema
+            conn.execute(text("GRANT USAGE ON SCHEMA public TO postgres"))
+
+            # Grant all privileges on all tables
+            conn.execute(
+                text(
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO postgres"
+                )
+            )
+
+            # Grant all privileges on all sequences
+            conn.execute(
+                text(
+                    "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO postgres"
+                )
+            )
+
+            # Set default privileges for future tables
+            conn.execute(
+                text(
+                    "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                    "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO postgres"
+                )
+            )
+
+        print("✅ Postgres user access granted")
+    except Exception as e:
+        print(f"⚠️  Failed to grant postgres access (non-fatal): {e}")
+
+
 def list_migrations():
     """List all available migration files."""
     migrations = sorted(MIGRATIONS_DIR.glob("*.sql"))
@@ -97,8 +137,20 @@ def main():
         print(f"❌ Migrations directory not found: {MIGRATIONS_DIR}")
         sys.exit(1)
 
-    # List migrations
-    migrations = list_migrations()
+    # Check for specific migration file argument
+    if len(sys.argv) > 1:
+        migration_file = Path(sys.argv[1])
+        if not migration_file.exists():
+            # Try relative to migrations directory
+            migration_file = MIGRATIONS_DIR / sys.argv[1]
+        if not migration_file.exists():
+            print(f"❌ Migration file not found: {sys.argv[1]}")
+            sys.exit(1)
+        migrations = [migration_file]
+    else:
+        # List all migrations
+        migrations = list_migrations()
+
     if not migrations:
         print("⚠️  No migrations found")
         sys.exit(0)
@@ -127,6 +179,9 @@ def main():
     print("\n" + "=" * 50)
     for migration in migrations:
         run_migration(migration, engine)
+
+    # Grant postgres user access (for Cloud SQL Studio)
+    grant_postgres_access(engine)
 
     # Clean up
     engine.dispose()
