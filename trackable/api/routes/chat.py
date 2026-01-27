@@ -5,6 +5,7 @@ Provides chat completion endpoints following the OpenAI API format:
 https://platform.openai.com/docs/api-reference/chat
 """
 
+import logging
 import time
 import uuid
 from typing import AsyncIterator
@@ -26,6 +27,8 @@ from trackable.models.chat import (
     ChatCompletionUsage,
     MessageRole,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 router = APIRouter()
 
@@ -76,13 +79,13 @@ def _build_prompt_from_messages(messages: list) -> str:
 async def _run_agent(user_id: str, prompt: str) -> str:
     """Run the agent and return the response text."""
     session_id = await _get_or_create_session(user_id)
-    content = Content(parts=[Part(text=prompt)])
+    new_message = Content(parts=[Part(text=prompt)], role="user")
 
     response_text = ""
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
-        new_message=content,
+        new_message=new_message,
     ):
         if event.content is None:
             continue
@@ -103,7 +106,11 @@ async def _generate_stream(
 ) -> AsyncIterator[str]:
     """Generate OpenAI-compatible streaming response."""
     session_id = await _get_or_create_session(user_id)
-    content = Content(parts=[Part(text=prompt)])
+    new_message = Content(parts=[Part(text=prompt)], role="user")
+
+    logger.info(
+        "User ID: %s, Session ID: %s, new msg: %s", user_id, session_id, new_message
+    )
 
     # Send initial chunk with role
     initial_chunk = ChatCompletionChunk(
@@ -124,7 +131,7 @@ async def _generate_stream(
     async for event in runner.run_async(
         user_id=user_id,
         session_id=session_id,
-        new_message=content,
+        new_message=new_message,
     ):
         if event.content is None:
             continue
@@ -221,3 +228,20 @@ async def chat_completions(request: ChatCompletionRequest):
             status_code=500,
             detail=f"Chat completion failed: {str(e)}",
         )
+
+
+@router.delete("/chat/sessions")
+async def clear_session(user: str = "default_user"):
+    """
+    Clear the chat session for a user, resetting conversation history.
+
+    Args:
+        user: User identifier (defaults to "default_user")
+
+    Returns:
+        Confirmation message with session status
+    """
+    if user in _user_sessions:
+        del _user_sessions[user]
+        return {"message": "Session cleared", "user": user}
+    return {"message": "No session found", "user": user}
