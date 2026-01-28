@@ -10,6 +10,7 @@ from trackable.db.repositories.merchant import MerchantRepository
 from trackable.db.repositories.order import OrderRepository
 from trackable.db.repositories.shipment import ShipmentRepository
 from trackable.db.repositories.source import SourceRepository
+from trackable.db.repositories.user import UserRepository
 
 __all__ = [
     "JobRepository",
@@ -17,4 +18,5 @@ __all__ = [
     "OrderRepository",
     "ShipmentRepository",
     "SourceRepository",
+    "UserRepository",
 ]

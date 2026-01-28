@@ -29,6 +29,11 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+# Test user ID (valid UUID format)
+TEST_USER_ID = "d5314b80-4aac-4bf2-940c-0a0ceda5bff4"
+TEST_HEADERS = {"X-User-ID": TEST_USER_ID}
+
+
 @pytest.fixture
 def sample_order() -> Order:
     """Create a sample order for testing."""
@@ -78,7 +83,7 @@ class TestListOrders:
             mock_uow.orders.get_by_user.return_value = [sample_order]
             mock_uow.orders.count_by_user.return_value = 1
 
-            response = client.get("/api/v1/orders")
+            response = client.get("/api/v1/orders", headers=TEST_HEADERS)
 
             assert response.status_code == 200
             data = response.json()
@@ -107,7 +112,9 @@ class TestListOrders:
             mock_uow.orders.get_by_user.return_value = [sample_order]
             mock_uow.orders.count_by_user.return_value = 1
 
-            response = client.get("/api/v1/orders?status=delivered")
+            response = client.get(
+                "/api/v1/orders?status=delivered", headers=TEST_HEADERS
+            )
 
             assert response.status_code == 200
 
@@ -118,7 +125,9 @@ class TestListOrders:
 
     def test_list_orders_invalid_status(self, client: TestClient, mock_db_initialized):
         """Test listing orders with invalid status returns 400."""
-        response = client.get("/api/v1/orders?status=invalid_status")
+        response = client.get(
+            "/api/v1/orders?status=invalid_status", headers=TEST_HEADERS
+        )
 
         assert response.status_code == 400
         assert "Invalid status" in response.json()["detail"]
@@ -133,7 +142,9 @@ class TestListOrders:
             mock_uow.orders.get_by_user.return_value = []
             mock_uow.orders.count_by_user.return_value = 50
 
-            response = client.get("/api/v1/orders?limit=10&offset=20")
+            response = client.get(
+                "/api/v1/orders?limit=10&offset=20", headers=TEST_HEADERS
+            )
 
             assert response.status_code == 200
             data = response.json()
@@ -150,7 +161,7 @@ class TestListOrders:
             mock_uow.orders.get_by_user.return_value = []
             mock_uow.orders.count_by_user.return_value = 0
 
-            response = client.get("/api/v1/orders")
+            response = client.get("/api/v1/orders", headers=TEST_HEADERS)
 
             assert response.status_code == 200
             data = response.json()
@@ -162,7 +173,7 @@ class TestListOrders:
         with patch("trackable.api.routes.orders.DatabaseConnection") as mock_db:
             mock_db.is_initialized.return_value = False
 
-            response = client.get("/api/v1/orders")
+            response = client.get("/api/v1/orders", headers=TEST_HEADERS)
 
             assert response.status_code == 503
             assert "Database not available" in response.json()["detail"]
@@ -180,7 +191,9 @@ class TestGetOrder:
             mock_uow_class.return_value.__enter__.return_value = mock_uow
             mock_uow.orders.get_by_id_for_user.return_value = sample_order
 
-            response = client.get(f"/api/v1/orders/{sample_order.id}")
+            response = client.get(
+                f"/api/v1/orders/{sample_order.id}", headers=TEST_HEADERS
+            )
 
             assert response.status_code == 200
             data = response.json()
@@ -197,7 +210,7 @@ class TestGetOrder:
             mock_uow.orders.get_by_id_for_user.return_value = None
 
             fake_id = str(uuid4())
-            response = client.get(f"/api/v1/orders/{fake_id}")
+            response = client.get(f"/api/v1/orders/{fake_id}", headers=TEST_HEADERS)
 
             assert response.status_code == 404
             assert "Order not found" in response.json()["detail"]
@@ -221,6 +234,7 @@ class TestUpdateOrder:
 
             response = client.patch(
                 f"/api/v1/orders/{sample_order.id}",
+                headers=TEST_HEADERS,
                 json={"status": "returned"},
             )
 
@@ -246,6 +260,7 @@ class TestUpdateOrder:
 
             response = client.patch(
                 f"/api/v1/orders/{sample_order.id}",
+                headers=TEST_HEADERS,
                 json={"note": "Customer requested return"},
             )
 
@@ -271,6 +286,7 @@ class TestUpdateOrder:
 
             response = client.patch(
                 f"/api/v1/orders/{sample_order.id}",
+                headers=TEST_HEADERS,
                 json={"is_monitored": False},
             )
 
@@ -291,6 +307,7 @@ class TestUpdateOrder:
             fake_id = str(uuid4())
             response = client.patch(
                 f"/api/v1/orders/{fake_id}",
+                headers=TEST_HEADERS,
                 json={"status": "returned"},
             )
 
@@ -311,7 +328,9 @@ class TestDeleteOrder:
             mock_uow.orders.get_by_id_for_user.return_value = sample_order
             mock_uow.orders.delete_by_id.return_value = True
 
-            response = client.delete(f"/api/v1/orders/{sample_order.id}")
+            response = client.delete(
+                f"/api/v1/orders/{sample_order.id}", headers=TEST_HEADERS
+            )
 
             assert response.status_code == 200
             data = response.json()
@@ -329,7 +348,7 @@ class TestDeleteOrder:
             mock_uow.orders.get_by_id_for_user.return_value = None
 
             fake_id = str(uuid4())
-            response = client.delete(f"/api/v1/orders/{fake_id}")
+            response = client.delete(f"/api/v1/orders/{fake_id}", headers=TEST_HEADERS)
 
             assert response.status_code == 404
             assert "Order not found" in response.json()["detail"]
@@ -340,7 +359,7 @@ class TestDeleteOrder:
             mock_db.is_initialized.return_value = False
 
             fake_id = str(uuid4())
-            response = client.delete(f"/api/v1/orders/{fake_id}")
+            response = client.delete(f"/api/v1/orders/{fake_id}", headers=TEST_HEADERS)
 
             assert response.status_code == 503
             assert "Database not available" in response.json()["detail"]
