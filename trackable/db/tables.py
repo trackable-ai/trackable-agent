@@ -51,6 +51,7 @@ merchants = Table(
     Column("id", UUID, primary_key=True),
     Column("name", String(255), nullable=False),
     Column("domain", String(255), unique=True),
+    Column("aliases", JSONB, default=[]),
     Column("support_email", String(255)),
     Column("support_url", Text),
     Column("return_portal_url", Text),

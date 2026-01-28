@@ -70,8 +70,12 @@ class Merchant(BaseModel):
     """Merchant/retailer information"""
 
     id: str = Field(description="Internal merchant identifier")
-    name: str = Field(description="Merchant display name")
+    name: str = Field(description="Merchant display name (normalized)")
     domain: Optional[str] = Field(default=None, description="Merchant domain")
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="Alternate names/variations for fuzzy matching",
+    )
     support_email: Optional[str] = Field(default=None, description="Support email")
     support_url: Optional[HttpUrl] = Field(default=None, description="Support URL")
     return_portal_url: Optional[HttpUrl] = Field(

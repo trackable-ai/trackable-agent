@@ -136,6 +136,133 @@ class TestMerchantRepository:
         assert updated.name == "Updated Name"
         assert updated.support_email == "support@example.com"
 
+    def test_upsert_normalizes_merchant_name(self, uow):
+        """Test that upsert normalizes merchant names."""
+        from trackable.models.order import Merchant
+
+        unique_suffix = uuid4().hex[:8]
+        domain = f"amazon-test-{unique_suffix}.com"
+
+        # Create merchant with uppercase name
+        merchant = Merchant(
+            id="",  # Let repository generate ID
+            name="AMAZON",
+            domain=domain,
+        )
+
+        with uow:
+            created = uow.merchants.upsert_by_domain(merchant)
+            uow.commit()
+
+        # Name should be normalized to "Amazon" (known merchant)
+        assert created.name == "Amazon"
+        assert created.domain == domain
+        # Should have aliases generated
+        assert len(created.aliases) > 0
+        assert "amazon" in created.aliases
+
+    def test_upsert_normalizes_domain(self, uow):
+        """Test that upsert normalizes domains (removes www prefix)."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import Merchant
+
+        unique_suffix = uuid4().hex[:8]
+
+        merchant = Merchant(
+            id="",
+            name="Test Store",
+            domain=f"www.teststore-{unique_suffix}.com",
+        )
+
+        with uow:
+            created = uow.merchants.upsert_by_domain(merchant)
+            uow.commit()
+
+        # Domain should have www. removed
+        assert created.domain == f"teststore-{unique_suffix}.com"
+
+        # Should be able to look up by normalized domain
+        with UnitOfWork() as uow2:
+            found = uow2.merchants.get_by_domain(f"teststore-{unique_suffix}.com")
+            assert found is not None
+            assert found.id == created.id
+
+    def test_get_by_name_or_domain_finds_by_domain(self, uow):
+        """Test get_by_name_or_domain finds merchant by domain."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import Merchant
+
+        unique_suffix = uuid4().hex[:8]
+        domain = f"findme-{unique_suffix}.com"
+
+        merchant = Merchant(
+            id="",
+            name="Find Me Store",
+            domain=domain,
+        )
+
+        with uow:
+            created = uow.merchants.upsert_by_domain(merchant)
+            uow.commit()
+
+        # Find by domain
+        with UnitOfWork() as uow2:
+            found = uow2.merchants.get_by_name_or_domain(domain=domain)
+            assert found is not None
+            assert found.id == created.id
+
+    def test_get_by_name_or_domain_finds_by_name(self, uow):
+        """Test get_by_name_or_domain finds merchant by name (case-insensitive)."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import Merchant
+
+        unique_suffix = uuid4().hex[:8]
+
+        merchant = Merchant(
+            id="",
+            name=f"Unique Store {unique_suffix}",
+            domain=f"uniquestore-{unique_suffix}.com",
+        )
+
+        with uow:
+            created = uow.merchants.upsert_by_domain(merchant)
+            uow.commit()
+
+        # Find by name (case-insensitive)
+        with UnitOfWork() as uow2:
+            found = uow2.merchants.get_by_name_or_domain(
+                name=f"unique store {unique_suffix}"
+            )
+            assert found is not None
+            assert found.id == created.id
+
+    def test_get_by_name_or_domain_finds_by_alias(self, uow):
+        """Test get_by_name_or_domain finds merchant by alias."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import Merchant
+
+        unique_suffix = uuid4().hex[:8]
+        domain = f"mystore-{unique_suffix}.com"
+
+        merchant = Merchant(
+            id="",
+            name="My Store",
+            domain=domain,
+        )
+
+        with uow:
+            created = uow.merchants.upsert_by_domain(merchant)
+            uow.commit()
+
+        # Aliases should include "mystore" (name without spaces)
+        assert "mystore" in created.aliases
+
+        # Find by alias
+        with UnitOfWork() as uow2:
+            found = uow2.merchants.get_by_name_or_domain(name="mystore")
+            assert found is not None
+            assert found.id == created.id
+
 
 class TestJobRepository:
     """Tests for JobRepository."""

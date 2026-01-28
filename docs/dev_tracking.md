@@ -163,6 +163,19 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Order with nested items
     - Full email ingest workflow
 
+#### Merchant Matching & Normalization
+
+- [x] **Merchant matching and normalization** (`trackable/utils/merchant.py`, `trackable/db/repositories/merchant.py`)
+    - Merchant name normalization utility with known merchant mappings
+    - Domain normalization (removes www., shop., store. prefixes)
+    - Automatic alias generation for fuzzy matching
+    - `get_by_name_or_domain()` method for flexible lookup
+    - Updated `upsert_by_domain()` to normalize names and store aliases
+    - Migration 004: Added `aliases` JSONB column to merchants table
+    - Updated Merchant model with `aliases` field
+    - 45 unit tests for merchant utilities
+    - 6 integration tests for normalization (11 total merchant tests)
+
 ### 🔄 In Progress
 
 (No tasks currently in progress)
@@ -204,12 +217,6 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 #### Worker Service - Additional Task Handlers
 
-- [ ] Merchant matching and normalization (`trackable/worker/handlers.py`, `trackable/db/repositories/merchant.py`)
-    - [ ] Look up existing merchant by domain before creating new one
-    - [ ] Normalize merchant names (e.g., "Amazon", "Amazon.com", "AMAZON" → "Amazon")
-    - [ ] Store merchant aliases/alternate names for fuzzy matching
-    - [ ] Use existing `upsert_by_domain()` instead of generating new UUID each time
-    - [ ] Add `get_by_name_or_domain()` method for flexible lookup
 - [ ] Order upsert by order number (`trackable/worker/handlers.py`, `trackable/db/repositories/order.py`)
     - [ ] Check if order with same `order_number` + `merchant_id` + `user_id` exists
     - [ ] Update existing order instead of inserting duplicate
@@ -259,7 +266,18 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-01-28
 
-- 📝 Added TODO: Merchant matching and normalization - look up existing merchants, normalize names, avoid duplicate merchants
+- ✅ Implemented merchant matching and normalization (`trackable/utils/merchant.py`, `trackable/db/repositories/merchant.py`)
+    - Merchant name normalization utility with 50+ known merchant mappings (Amazon, Nike, Target, etc.)
+    - Domain normalization (removes www., shop., store. prefixes, lowercases)
+    - Automatic alias generation for fuzzy matching (handles spaces, hyphens, apostrophes, ampersands)
+    - `get_by_name_or_domain()` method for flexible lookup by name, domain, or alias
+    - Updated `upsert_by_domain()` to normalize names and generate/store aliases
+    - Migration 004: Added `aliases` JSONB column to merchants table with GIN index
+    - Updated Merchant model with `aliases` field
+    - Updated worker handlers to use normalized merchant creation
+    - 45 unit tests for merchant utilities (all passing)
+    - 6 integration tests for merchant normalization (11 total)
+    - Total: 111 unit tests + 11 integration tests passing
 - 📝 Added TODO: Rule-based email filtering in ingress service before creating Cloud Tasks
 - 📝 Added TODO: Order upsert by order number - update existing orders instead of inserting duplicates
 - 📝 Added TODO: Handle non-order emails gracefully in worker handlers (detect empty results, mark job appropriately, avoid empty records)
