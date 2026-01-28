@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-01-26
+**Last Updated**: 2026-01-27
 
 ## Overview
 
@@ -61,13 +61,15 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Ingest API endpoints (`trackable/api/routes/ingest.py`):
         - `POST /api/v1/ingest/email` - Manual email submission
         - `POST /api/v1/ingest/image` - Manual screenshot submission
+        - `POST /api/v1/ingest/email/batch` - Batch email submission (max 50)
+        - `POST /api/v1/ingest/image/batch` - Batch image submission (max 50)
     - Cloud Tasks client (`trackable/api/cloud_tasks.py`):
         - Creates parse-email tasks for Worker service
         - Creates parse-image tasks for Worker service
         - Supports local development mode (no GCP required)
     - CORS configuration for frontend access
     - Dockerfile for Cloud Run deployment
-    - Successfully tested locally (12 ingest tests passing)
+    - Successfully tested locally (23 ingest tests passing)
     - API usage examples documented
     - Order management APIs (`trackable/api/routes/orders.py`):
         - `GET /api/v1/orders` - List user orders with filtering/pagination
@@ -228,6 +230,18 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-01-27
+
+- ✅ Implemented batch ingest endpoints (`trackable/api/routes/ingest.py`)
+    - `POST /api/v1/ingest/email/batch` - Submit multiple emails (max 50 items)
+    - `POST /api/v1/ingest/image/batch` - Submit multiple images (max 50 items)
+    - Partial success handling (individual failures don't block other items)
+    - Per-item transaction isolation
+    - New models: `BatchEmailItem`, `BatchImageItem`, `IngestBatchEmailRequest`, `IngestBatchImageRequest`, `BatchItemResult`, `IngestBatchResponse`, `BatchItemStatus`
+    - Refactored existing endpoints to use shared helper functions
+    - 11 new tests for batch endpoints (23 total ingest tests)
+    - All 66 tests passing
 
 ### 2026-01-26
 
