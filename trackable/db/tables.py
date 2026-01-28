@@ -69,7 +69,7 @@ orders = Table(
     Column("id", UUID, primary_key=True),
     Column("user_id", UUID, ForeignKey("users.id", ondelete="CASCADE"), nullable=False),
     Column("merchant_id", UUID, ForeignKey("merchants.id"), nullable=False),
-    Column("order_number", String(255)),
+    Column("order_number", String(255), nullable=False),
     Column("order_date", DateTime(timezone=True)),
     Column("status", String(50), nullable=False, default="detected"),
     Column("country_code", String(2)),

@@ -178,6 +178,7 @@ class TestConvertExtractedToOrder:
         """Test converting order that needs clarification"""
         extracted = ExtractedOrderData(
             merchant_name="Unknown Store",
+            merchant_order_id="UNK-001",  # Order number is required
             items=[],
             confidence_score=0.4,
             needs_clarification=True,
@@ -200,6 +201,22 @@ class TestConvertExtractedToOrder:
         assert len(order.notes) == 1
         assert order.notes[0] == "Very limited information in email"
         assert order.confidence_score == 0.4
+
+    def test_convert_order_without_order_number_raises_error(self):
+        """Test that converting order without order number raises ValueError"""
+        extracted = ExtractedOrderData(
+            merchant_name="Some Store",
+            items=[],
+            confidence_score=0.3,
+        )
+
+        with pytest.raises(ValueError, match="Order number is required"):
+            convert_extracted_to_order(
+                extracted=extracted,
+                user_id="user_123",
+                source_type=SourceType.EMAIL,
+                source_id="email_no_order_num",
+            )
 
 
 class TestInputProcessorAgent:

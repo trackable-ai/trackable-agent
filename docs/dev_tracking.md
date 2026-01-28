@@ -176,6 +176,26 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - 45 unit tests for merchant utilities
     - 6 integration tests for normalization (11 total merchant tests)
 
+#### Order Upsert
+
+- [x] **Order upsert by order number** (`trackable/db/repositories/order.py`, `trackable/worker/handlers.py`)
+    - `get_by_unique_key()` method to find orders by user_id + merchant_id + order_number
+    - `upsert_by_order_number()` method to insert or update existing orders
+    - `_merge_orders()` method with intelligent data merging:
+        - Status progression (never regresses, only moves forward in lifecycle)
+        - Notes appended (with deduplication)
+        - Higher confidence score used
+        - Items replaced with new data
+        - Return windows preserved if already set
+        - URLs and refund info updated
+    - Updated worker handlers (`handle_parse_email`, `handle_parse_image`) to use upsert
+    - Returns `is_new_order` flag in handler responses
+    - Migration 005: Added NOT NULL constraint on `order_number` + unique constraint on `(user_id, merchant_id, order_number)`
+    - Updated Order model to require `order_number` (no longer optional)
+    - ValueError raised in `convert_extracted_to_order()` when order number cannot be extracted
+    - 17 unit tests for merge logic (`tests/db/test_order_repository.py`)
+    - 4 integration tests for upsert functionality
+
 ### 🔄 In Progress
 
 (No tasks currently in progress)
@@ -217,11 +237,6 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 #### Worker Service - Additional Task Handlers
 
-- [ ] Order upsert by order number (`trackable/worker/handlers.py`, `trackable/db/repositories/order.py`)
-    - [ ] Check if order with same `order_number` + `merchant_id` + `user_id` exists
-    - [ ] Update existing order instead of inserting duplicate
-    - [ ] Merge new data (e.g., shipment updates, status changes) with existing order
-    - [ ] Add `upsert_by_order_number()` method to OrderRepository
 - [ ] Handle non-order emails gracefully (`trackable/worker/handlers.py`)
     - [ ] Detect when input processor returns empty/no order data
     - [ ] Mark job as completed with appropriate status (e.g., "no_order_found")
@@ -266,6 +281,17 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-01-28
 
+- ✅ Implemented order upsert by order number (`trackable/db/repositories/order.py`, `trackable/worker/handlers.py`)
+    - `get_by_unique_key()` method to find orders by user_id + merchant_id + order_number
+    - `upsert_by_order_number()` method to insert or update existing orders
+    - Intelligent merge logic: status progression (never regresses), notes deduplication, higher confidence used
+    - Items replaced, return windows preserved, URLs and refund info updated
+    - Updated worker handlers (`handle_parse_email`, `handle_parse_image`) to use upsert
+    - Migration 005: Added NOT NULL constraint on order_number + unique constraint on (user_id, merchant_id, order_number)
+    - Updated Order model to require order_number (no longer optional)
+    - ValueError raised when order number cannot be extracted from source
+    - 17 unit tests for merge logic, 4 integration tests for upsert
+    - Total: 129 unit tests + 16 integration tests passing
 - ✅ Implemented merchant matching and normalization (`trackable/utils/merchant.py`, `trackable/db/repositories/merchant.py`)
     - Merchant name normalization utility with 50+ known merchant mappings (Amazon, Nike, Target, etc.)
     - Domain normalization (removes www., shop., store. prefixes, lowercases)
@@ -277,9 +303,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Updated worker handlers to use normalized merchant creation
     - 45 unit tests for merchant utilities (all passing)
     - 6 integration tests for merchant normalization (11 total)
-    - Total: 111 unit tests + 11 integration tests passing
 - 📝 Added TODO: Rule-based email filtering in ingress service before creating Cloud Tasks
-- 📝 Added TODO: Order upsert by order number - update existing orders instead of inserting duplicates
 - 📝 Added TODO: Handle non-order emails gracefully in worker handlers (detect empty results, mark job appropriately, avoid empty records)
 
 ### 2026-01-27

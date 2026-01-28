@@ -183,12 +183,16 @@ def convert_extracted_to_order(
     if extracted.extraction_notes:
         notes.append(extracted.extraction_notes)
 
+    # Validate order number is present
+    if not extracted.merchant_order_id:
+        raise ValueError("Order number is required but was not found in the source")
+
     # Create order
     order = Order(
         id=order_id,
         user_id=user_id,
         merchant=merchant,
-        order_number=extracted.merchant_order_id,  # Use order_number field
+        order_number=extracted.merchant_order_id,
         status=OrderStatus.DETECTED,
         items=extracted.items,
         shipments=shipments,

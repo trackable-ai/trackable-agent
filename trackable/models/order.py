@@ -188,9 +188,7 @@ class Order(BaseModel):
     merchant: Merchant = Field(description="Merchant information")
 
     # Order details
-    order_number: Optional[str] = Field(
-        default=None, description="Merchant order number"
-    )
+    order_number: str = Field(description="Merchant order number")
     order_date: Optional[datetime] = Field(
         default=None, description="Order placement date"
     )

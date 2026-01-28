@@ -431,6 +431,265 @@ class TestOrderRepository:
             assert retrieved.total is not None
             assert retrieved.total.amount == Decimal("109.97")
 
+    def test_get_by_unique_key(self, uow, test_user):
+        """Test finding order by user_id + merchant_id + order_number."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import (
+            Merchant,
+            Money,
+            Order,
+            OrderStatus,
+            SourceType,
+        )
+
+        # Create a merchant
+        merchant = Merchant(
+            id=str(uuid4()),
+            name="Unique Key Test Store",
+            domain=f"unique-key-{uuid4().hex[:8]}.com",
+        )
+
+        with uow:
+            saved_merchant = uow.merchants.create(merchant)
+            uow.commit()
+
+        # Create order
+        now = datetime.now(timezone.utc)
+        order_number = f"UK-{uuid4().hex[:8]}"
+        order_id = str(uuid4())
+
+        order = Order(
+            id=order_id,
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.CONFIRMED,
+            source_type=SourceType.EMAIL,
+            total=Money(amount=Decimal("50.00"), currency="USD"),
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow2:
+            uow2.orders.create(order)
+            uow2.commit()
+
+        # Find by unique key
+        with UnitOfWork() as uow3:
+            found = uow3.orders.get_by_unique_key(
+                user_id=test_user,
+                merchant_id=saved_merchant.id,
+                order_number=order_number,
+            )
+            assert found is not None
+            assert found.id == order_id
+            assert found.order_number == order_number
+
+        # Should not find with wrong merchant_id
+        with UnitOfWork() as uow4:
+            not_found = uow4.orders.get_by_unique_key(
+                user_id=test_user,
+                merchant_id=str(uuid4()),  # Wrong merchant
+                order_number=order_number,
+            )
+            assert not_found is None
+
+    def test_upsert_creates_new_order(self, uow, test_user):
+        """Test upsert creates new order when not found."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import (
+            Merchant,
+            Money,
+            Order,
+            OrderStatus,
+            SourceType,
+        )
+
+        # Create a merchant
+        merchant = Merchant(
+            id=str(uuid4()),
+            name="Upsert Create Test Store",
+            domain=f"upsert-create-{uuid4().hex[:8]}.com",
+        )
+
+        with uow:
+            saved_merchant = uow.merchants.create(merchant)
+            uow.commit()
+
+        # Create order via upsert
+        now = datetime.now(timezone.utc)
+        order_number = f"UPS-NEW-{uuid4().hex[:8]}"
+
+        order = Order(
+            id=str(uuid4()),
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.DETECTED,
+            source_type=SourceType.EMAIL,
+            total=Money(amount=Decimal("75.00"), currency="USD"),
+            confidence_score=0.85,
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow2:
+            result, is_new = uow2.orders.upsert_by_order_number(order)
+            uow2.commit()
+
+        assert is_new is True
+        assert result.order_number == order_number
+        assert result.status == OrderStatus.DETECTED
+        assert result.total is not None
+        assert result.total.amount == Decimal("75.00")
+
+    def test_upsert_updates_existing_order(self, uow, test_user):
+        """Test upsert updates existing order when found."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import (
+            Item,
+            Merchant,
+            Money,
+            Order,
+            OrderStatus,
+            SourceType,
+        )
+
+        # Create a merchant
+        merchant = Merchant(
+            id=str(uuid4()),
+            name="Upsert Update Test Store",
+            domain=f"upsert-update-{uuid4().hex[:8]}.com",
+        )
+
+        with uow:
+            saved_merchant = uow.merchants.create(merchant)
+            uow.commit()
+
+        # Create initial order
+        now = datetime.now(timezone.utc)
+        order_number = f"UPS-UPD-{uuid4().hex[:8]}"
+        original_order_id = str(uuid4())
+
+        original_order = Order(
+            id=original_order_id,
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.DETECTED,
+            source_type=SourceType.EMAIL,
+            total=Money(amount=Decimal("100.00"), currency="USD"),
+            confidence_score=0.70,
+            notes=["Original note"],
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow2:
+            uow2.orders.create(original_order)
+            uow2.commit()
+
+        # Upsert with updated data
+        updated_order = Order(
+            id=str(uuid4()),  # Different ID, but same order_number + merchant + user
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.SHIPPED,  # Status progression
+            source_type=SourceType.EMAIL,
+            items=[
+                Item(
+                    id=str(uuid4()),
+                    order_id=original_order_id,
+                    name="New Item",
+                    quantity=1,
+                    price=Money(amount=Decimal("100.00"), currency="USD"),
+                ),
+            ],
+            total=Money(amount=Decimal("110.00"), currency="USD"),
+            confidence_score=0.90,  # Higher confidence
+            notes=["Updated note"],
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow3:
+            result, is_new = uow3.orders.upsert_by_order_number(updated_order)
+            uow3.commit()
+
+        assert is_new is False
+        assert result.id == original_order_id  # Same order ID preserved
+        assert result.status == OrderStatus.SHIPPED  # Status progressed
+        assert result.confidence_score == 0.90  # Higher confidence used
+        assert len(result.items) == 1  # Items updated
+        assert result.items[0].name == "New Item"
+        # Notes should contain both old and new (deduplicated)
+        assert "Original note" in result.notes
+        assert "Updated note" in result.notes
+
+    def test_upsert_status_does_not_regress(self, uow, test_user):
+        """Test upsert does not regress order status."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import (
+            Merchant,
+            Money,
+            Order,
+            OrderStatus,
+            SourceType,
+        )
+
+        # Create a merchant
+        merchant = Merchant(
+            id=str(uuid4()),
+            name="Status Regress Test Store",
+            domain=f"status-regress-{uuid4().hex[:8]}.com",
+        )
+
+        with uow:
+            saved_merchant = uow.merchants.create(merchant)
+            uow.commit()
+
+        # Create order with SHIPPED status
+        now = datetime.now(timezone.utc)
+        order_number = f"REG-{uuid4().hex[:8]}"
+        original_order_id = str(uuid4())
+
+        original_order = Order(
+            id=original_order_id,
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.SHIPPED,  # Already shipped
+            source_type=SourceType.EMAIL,
+            total=Money(amount=Decimal("50.00"), currency="USD"),
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow2:
+            uow2.orders.create(original_order)
+            uow2.commit()
+
+        # Try to upsert with DETECTED status (regression)
+        regressed_order = Order(
+            id=str(uuid4()),
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.DETECTED,  # Lower status
+            source_type=SourceType.EMAIL,
+            total=Money(amount=Decimal("50.00"), currency="USD"),
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow3:
+            result, is_new = uow3.orders.upsert_by_order_number(regressed_order)
+            uow3.commit()
+
+        assert is_new is False
+        assert result.status == OrderStatus.SHIPPED  # Status NOT regressed
+
 
 class TestFullWorkflow:
     """Test full ingest workflow with database."""

@@ -191,6 +191,7 @@ Return structured data with confidence score."""
         )
 
         # Save to database if available
+        is_new_order = True
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 # Upsert merchant by domain (handles name normalization and aliases)
@@ -207,8 +208,8 @@ Return structured data with confidence score."""
                 # Update order with persisted merchant ID
                 order.merchant.id = saved_merchant.id
 
-                # Save order
-                saved_order = uow.orders.create(order)
+                # Upsert order (update existing or create new)
+                saved_order, is_new_order = uow.orders.upsert_by_order_number(order)
 
                 # Mark source as processed
                 uow.sources.mark_processed(source_id, saved_order.id)
@@ -220,6 +221,7 @@ Return structured data with confidence score."""
                         "order_id": saved_order.id,
                         "merchant_name": saved_merchant.name,
                         "confidence_score": order.confidence_score,
+                        "is_new_order": is_new_order,
                     },
                 )
                 uow.commit()
@@ -228,13 +230,17 @@ Return structured data with confidence score."""
         else:
             order_id = order.id
 
+        status = "created" if is_new_order else "updated"
+        print(f"✅ Order {status}: {order_id}")
+
         return {
-            "status": "success",
+            "status": status,
             "job_id": job_id,
             "order_id": order_id,
             "merchant_name": order.merchant.name,
             "confidence_score": order.confidence_score,
             "needs_clarification": order.needs_clarification,
+            "is_new_order": is_new_order,
         }
 
     except Exception as e:
@@ -397,6 +403,7 @@ Return structured data with confidence score. If information is unclear or missi
         )
 
         # Save to database if available
+        is_new_order = True
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 # Upsert merchant by domain (handles name normalization and aliases)
@@ -413,8 +420,8 @@ Return structured data with confidence score. If information is unclear or missi
                 # Update order with persisted merchant ID
                 order.merchant.id = saved_merchant.id
 
-                # Save order
-                saved_order = uow.orders.create(order)
+                # Upsert order (update existing or create new)
+                saved_order, is_new_order = uow.orders.upsert_by_order_number(order)
 
                 # Mark source as processed (and store image hash)
                 uow.sources.mark_processed(source_id, saved_order.id)
@@ -426,6 +433,7 @@ Return structured data with confidence score. If information is unclear or missi
                         "order_id": saved_order.id,
                         "merchant_name": saved_merchant.name,
                         "confidence_score": order.confidence_score,
+                        "is_new_order": is_new_order,
                     },
                 )
                 uow.commit()
@@ -434,14 +442,18 @@ Return structured data with confidence score. If information is unclear or missi
         else:
             order_id = order.id
 
+        status = "created" if is_new_order else "updated"
+        print(f"✅ Order {status}: {order_id}")
+
         return {
-            "status": "success",
+            "status": status,
             "job_id": job_id,
             "order_id": order_id,
             "merchant_name": order.merchant.name,
             "confidence_score": order.confidence_score,
             "needs_clarification": order.needs_clarification,
             "is_duplicate": False,
+            "is_new_order": is_new_order,
         }
 
     except Exception as e:

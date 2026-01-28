@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, func, select
+from sqlalchemy import Table, and_, func, select
 
 from trackable.db.repositories.base import (
     BaseRepository,
@@ -26,6 +26,20 @@ from trackable.models.order import (
     OrderStatus,
     SourceType,
 )
+
+# Order status progression - higher index = later in lifecycle
+# Used to prevent status regression during upsert
+ORDER_STATUS_PROGRESSION = [
+    OrderStatus.UNKNOWN,
+    OrderStatus.DETECTED,
+    OrderStatus.CONFIRMED,
+    OrderStatus.SHIPPED,
+    OrderStatus.IN_TRANSIT,
+    OrderStatus.DELIVERED,
+    OrderStatus.RETURNED,
+    OrderStatus.REFUNDED,
+    OrderStatus.CANCELLED,
+]
 
 
 class OrderRepository(BaseRepository[Order]):
@@ -313,3 +327,186 @@ class OrderRepository(BaseRepository[Order]):
             last_agent_intervention=now,
             updated_at=now,
         )
+
+    def get_by_unique_key(
+        self, user_id: str, merchant_id: str, order_number: str
+    ) -> Order | None:
+        """
+        Get order by unique key: user_id + merchant_id + order_number.
+
+        Args:
+            user_id: User ID
+            merchant_id: Merchant ID
+            order_number: Merchant order number
+
+        Returns:
+            Order or None if not found
+        """
+        stmt = select(self.table).where(
+            and_(
+                self.table.c.user_id == UUID(user_id),
+                self.table.c.merchant_id == UUID(merchant_id),
+                self.table.c.order_number == order_number,
+            )
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_model(row)
+
+    def _merge_orders(self, existing: Order, incoming: Order) -> dict:
+        """
+        Merge incoming order data with existing order.
+
+        Merge strategy:
+        - Status: Only progress forward, never regress
+        - Items: Replace with incoming if provided
+        - Notes: Append new notes
+        - Money fields: Use incoming if provided, else keep existing
+        - Return windows: Preserve existing if set, else use incoming
+        - Confidence: Use higher score
+        - URLs: Use incoming if provided
+        - Other fields: Use incoming if provided, else keep existing
+
+        Args:
+            existing: Existing order in database
+            incoming: New order data from parsing
+
+        Returns:
+            Dictionary of fields to update
+        """
+        now = datetime.now(timezone.utc)
+        updates: dict[str, Any] = {"updated_at": now}
+
+        # Status progression - only move forward
+        existing_idx = (
+            ORDER_STATUS_PROGRESSION.index(existing.status)
+            if existing.status in ORDER_STATUS_PROGRESSION
+            else 0
+        )
+        incoming_idx = (
+            ORDER_STATUS_PROGRESSION.index(incoming.status)
+            if incoming.status in ORDER_STATUS_PROGRESSION
+            else 0
+        )
+        if incoming_idx > existing_idx:
+            updates["status"] = incoming.status.value
+
+        # Order date - use incoming if existing is None
+        if existing.order_date is None and incoming.order_date is not None:
+            updates["order_date"] = incoming.order_date
+
+        # Country code - use incoming if existing is None
+        if existing.country_code is None and incoming.country_code is not None:
+            updates["country_code"] = incoming.country_code
+
+        # Items - replace with incoming if provided
+        if incoming.items:
+            updates["items"] = models_to_jsonb(incoming.items)
+
+        # Money fields - use incoming if provided
+        if incoming.subtotal is not None:
+            updates["subtotal"] = model_to_jsonb(incoming.subtotal)
+        if incoming.tax is not None:
+            updates["tax"] = model_to_jsonb(incoming.tax)
+        if incoming.shipping_cost is not None:
+            updates["shipping_cost"] = model_to_jsonb(incoming.shipping_cost)
+        if incoming.total is not None:
+            updates["total"] = model_to_jsonb(incoming.total)
+
+        # Return windows - preserve existing if set
+        if existing.return_window_start is None and incoming.return_window_start:
+            updates["return_window_start"] = incoming.return_window_start
+        if existing.return_window_end is None and incoming.return_window_end:
+            updates["return_window_end"] = incoming.return_window_end
+        if existing.return_window_days is None and incoming.return_window_days:
+            updates["return_window_days"] = incoming.return_window_days
+        if existing.exchange_window_end is None and incoming.exchange_window_end:
+            updates["exchange_window_end"] = incoming.exchange_window_end
+
+        # Confidence score - use higher value
+        if incoming.confidence_score is not None:
+            if (
+                existing.confidence_score is None
+                or incoming.confidence_score > existing.confidence_score
+            ):
+                updates["confidence_score"] = incoming.confidence_score
+
+        # Clarification - update if incoming needs clarification
+        if incoming.needs_clarification:
+            updates["needs_clarification"] = True
+            # Append new questions, avoid duplicates
+            all_questions = list(existing.clarification_questions)
+            for q in incoming.clarification_questions:
+                if q not in all_questions:
+                    all_questions.append(q)
+            if all_questions != existing.clarification_questions:
+                updates["clarification_questions"] = all_questions
+
+        # URLs - use incoming if provided
+        if incoming.order_url is not None:
+            updates["order_url"] = str(incoming.order_url)
+        if incoming.receipt_url is not None:
+            updates["receipt_url"] = str(incoming.receipt_url)
+
+        # Refund tracking - update if incoming has refund info
+        if incoming.refund_initiated and not existing.refund_initiated:
+            updates["refund_initiated"] = True
+        if incoming.refund_amount is not None:
+            updates["refund_amount"] = model_to_jsonb(incoming.refund_amount)
+        if incoming.refund_completed_at is not None:
+            updates["refund_completed_at"] = incoming.refund_completed_at
+
+        # Notes - append new notes (avoid duplicates)
+        if incoming.notes:
+            all_notes = list(existing.notes)
+            for note in incoming.notes:
+                if note not in all_notes:
+                    all_notes.append(note)
+            if all_notes != existing.notes:
+                updates["notes"] = all_notes
+
+        return updates
+
+    def upsert_by_order_number(self, order: Order) -> tuple[Order, bool]:
+        """
+        Insert or update order by unique key (user_id + merchant_id + order_number).
+
+        If an order with the same order_number, merchant_id, and user_id exists,
+        the existing order is updated with merged data. Otherwise, a new order
+        is created.
+
+        Args:
+            order: Order to upsert
+
+        Returns:
+            Tuple of (Order, is_new) where is_new is True if a new order was created
+        """
+        # Check for existing order by unique key
+        existing = self.get_by_unique_key(
+            user_id=order.user_id,
+            merchant_id=order.merchant.id,
+            order_number=order.order_number,
+        )
+
+        if existing is None:
+            # No existing order - create new
+            return self.create(order), True
+
+        # Merge and update existing order
+        updates = self._merge_orders(existing, order)
+
+        if updates and len(updates) > 1:  # More than just updated_at
+            self.update_by_id(existing.id, **updates)
+            # Fetch updated order
+            updated = self.get_by_id(existing.id)
+            if updated is None:
+                # Should not happen, but return existing as fallback
+                return existing, False
+            return updated, False
+
+        # No changes needed
+        return existing, False
