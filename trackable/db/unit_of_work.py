@@ -15,6 +15,7 @@ from trackable.db.repositories.oauth_token import OAuthTokenRepository
 from trackable.db.repositories.order import OrderRepository
 from trackable.db.repositories.shipment import ShipmentRepository
 from trackable.db.repositories.source import SourceRepository
+from trackable.db.repositories.user import UserRepository
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -48,6 +49,7 @@ class UnitOfWork:
         self._orders: OrderRepository | None = None
         self._shipments: ShipmentRepository | None = None
         self._sources: SourceRepository | None = None
+        self._users: UserRepository | None = None
 
     def __enter__(self) -> UnitOfWork:
         self._session = DatabaseConnection.get_session()
@@ -108,6 +110,13 @@ class UnitOfWork:
             self._sources = SourceRepository(self.session)
         return self._sources
 
+    @property
+    def users(self) -> UserRepository:
+        """User repository for this unit of work."""
+        if self._users is None:
+            self._users = UserRepository(self.session)
+        return self._users
+
     def commit(self):
         """Commit the current transaction."""
         self.session.commit()
@@ -127,3 +136,4 @@ class UnitOfWork:
             self._orders = None
             self._shipments = None
             self._sources = None
+            self._users = None

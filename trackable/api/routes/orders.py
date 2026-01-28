@@ -6,8 +6,9 @@ These endpoints allow users to view, update, and delete their orders.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
+from trackable.api.auth import get_user_id
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import (
     Order,
@@ -30,7 +31,7 @@ def _check_db_available():
 
 @router.get("/orders", response_model=OrderListResponse)
 async def list_orders(
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
     status: str | None = Query(default=None, description="Filter by order status"),
     limit: int = Query(default=100, le=500, description="Maximum orders to return"),
     offset: int = Query(default=0, ge=0, description="Number of orders to skip"),
@@ -39,7 +40,7 @@ async def list_orders(
     List user's orders with optional filtering and pagination.
 
     Args:
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
         status: Optional status filter (e.g., "delivered", "shipped")
         limit: Maximum number of orders to return (max 500)
         offset: Number of orders to skip for pagination
@@ -82,14 +83,14 @@ async def list_orders(
 @router.get("/orders/{order_id}", response_model=Order)
 async def get_order(
     order_id: str,
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
 ) -> Order:
     """
     Get order details by ID.
 
     Args:
         order_id: Order UUID
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
 
     Returns:
         Order details
@@ -116,7 +117,7 @@ async def get_order(
 async def update_order(
     order_id: str,
     request: OrderUpdateRequest,
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
 ) -> Order:
     """
     Update order details.
@@ -129,7 +130,7 @@ async def update_order(
     Args:
         order_id: Order UUID
         request: Fields to update
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
 
     Returns:
         Updated order
@@ -191,14 +192,14 @@ async def update_order(
 @router.delete("/orders/{order_id}")
 async def delete_order(
     order_id: str,
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
 ) -> dict:
     """
     Delete an order.
 
     Args:
         order_id: Order UUID
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
 
     Returns:
         Confirmation message

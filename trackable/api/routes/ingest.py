@@ -10,8 +10,9 @@ import base64
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from trackable.api.auth import get_user_id
 from trackable.api.cloud_tasks import create_parse_email_task, create_parse_image_task
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.ingest import (
@@ -30,7 +31,7 @@ router = APIRouter()
 @router.post("/ingest/email", response_model=IngestResponse)
 async def ingest_email(
     request: IngestEmailRequest,
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
 ) -> IngestResponse:
     """
     Submit an email for order extraction.
@@ -41,7 +42,7 @@ async def ingest_email(
 
     Args:
         request: Email content and optional metadata
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
 
     Returns:
         IngestResponse with job_id for tracking
@@ -120,7 +121,7 @@ async def ingest_email(
 @router.post("/ingest/image", response_model=IngestResponse)
 async def ingest_image(
     request: IngestImageRequest,
-    user_id: str = "user_default",  # TODO: Get from authentication
+    user_id: str = Depends(get_user_id),
 ) -> IngestResponse:
     """
     Submit a screenshot for order extraction.
@@ -131,7 +132,7 @@ async def ingest_image(
 
     Args:
         request: Base64 encoded image data and optional metadata
-        user_id: User ID (will come from auth in production)
+        user_id: User ID from X-User-ID header
 
     Returns:
         IngestResponse with job_id for tracking

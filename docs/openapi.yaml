@@ -214,6 +214,45 @@ paths:
               example:
                 detail: "Chat completion failed: Internal error"
 
+  /api/v1/chat/sessions:
+    delete:
+      tags:
+        - chat
+      summary: Clear chat session
+      description: |
+        Clear the chat session for a user, resetting conversation history.
+
+        After clearing, the next chat request from the user will automatically
+        create a fresh session with no prior context.
+      operationId: clearChatSession
+      parameters:
+        - name: user
+          in: query
+          description: User identifier (defaults to "default_user")
+          required: false
+          schema:
+            type: string
+            default: "default_user"
+            example: "user_12345"
+      responses:
+        "200":
+          description: Session cleared or not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClearSessionResponse"
+              examples:
+                cleared:
+                  summary: Session cleared
+                  value:
+                    message: "Session cleared"
+                    user: "user_12345"
+                notFound:
+                  summary: No session found
+                  value:
+                    message: "No session found"
+                    user: "user_12345"
+
   /api/v1/ingest/email:
     post:
       tags:
@@ -605,6 +644,21 @@ components:
           type: string
           description: Human-readable status message
           example: "Email submitted for processing. Use the job_id to check status."
+
+    ClearSessionResponse:
+      type: object
+      required:
+        - message
+        - user
+      properties:
+        message:
+          type: string
+          description: Status message indicating whether session was cleared
+          example: "Session cleared"
+        user:
+          type: string
+          description: User identifier
+          example: "user_12345"
 
     ErrorResponse:
       type: object

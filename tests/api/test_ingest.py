@@ -21,6 +21,11 @@ def client() -> TestClient:
     return TestClient(app)
 
 
+# Test user ID (valid UUID format)
+TEST_USER_ID = "d5314b80-4aac-4bf2-940c-0a0ceda5bff4"
+TEST_HEADERS = {"X-User-ID": TEST_USER_ID}
+
+
 class TestIngestEmail:
     """Tests for POST /api/v1/ingest/email endpoint."""
 
@@ -33,6 +38,7 @@ class TestIngestEmail:
 
             response = client.post(
                 "/api/v1/ingest/email",
+                headers=TEST_HEADERS,
                 json={
                     "email_content": "From: orders@amazon.com\nSubject: Your order\n\nOrder confirmed!",
                     "email_subject": "Your order",
@@ -69,6 +75,7 @@ class TestIngestEmail:
 
             response = client.post(
                 "/api/v1/ingest/email",
+                headers=TEST_HEADERS,
                 json={"email_content": "Order confirmation email content"},
             )
 
@@ -80,6 +87,7 @@ class TestIngestEmail:
         """Test that empty email content is rejected."""
         response = client.post(
             "/api/v1/ingest/email",
+            headers=TEST_HEADERS,
             json={"email_content": ""},
         )
 
@@ -89,6 +97,7 @@ class TestIngestEmail:
         """Test that missing email content is rejected."""
         response = client.post(
             "/api/v1/ingest/email",
+            headers=TEST_HEADERS,
             json={},
         )
 
@@ -103,6 +112,7 @@ class TestIngestEmail:
 
             response = client.post(
                 "/api/v1/ingest/email",
+                headers=TEST_HEADERS,
                 json={"email_content": "Order confirmation email content"},
             )
 
@@ -130,6 +140,7 @@ class TestIngestImage:
 
             response = client.post(
                 "/api/v1/ingest/image",
+                headers=TEST_HEADERS,
                 json={
                     "image_data": image_data,
                     "filename": "screenshot.png",
@@ -167,6 +178,7 @@ class TestIngestImage:
 
             response = client.post(
                 "/api/v1/ingest/image",
+                headers=TEST_HEADERS,
                 json={"image_data": image_data},
             )
 
@@ -178,6 +190,7 @@ class TestIngestImage:
         """Test that empty image data is rejected."""
         response = client.post(
             "/api/v1/ingest/image",
+            headers=TEST_HEADERS,
             json={"image_data": ""},
         )
 
@@ -187,6 +200,7 @@ class TestIngestImage:
         """Test that missing image data is rejected."""
         response = client.post(
             "/api/v1/ingest/image",
+            headers=TEST_HEADERS,
             json={},
         )
 
@@ -203,6 +217,7 @@ class TestIngestImage:
 
             response = client.post(
                 "/api/v1/ingest/image",
+                headers=TEST_HEADERS,
                 json={"image_data": image_data},
             )
 
@@ -246,6 +261,7 @@ class TestIngestWithRealSamples:
 
             response = client.post(
                 "/api/v1/ingest/email",
+                headers=TEST_HEADERS,
                 json={"email_content": sample_email_content},
             )
 
@@ -265,6 +281,7 @@ class TestIngestWithRealSamples:
 
             response = client.post(
                 "/api/v1/ingest/image",
+                headers=TEST_HEADERS,
                 json={
                     "image_data": sample_screenshot_base64,
                     "filename": "amazon_order.png",

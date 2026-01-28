@@ -41,5 +41,7 @@ class IngestResponse(BaseModel):
 
     job_id: str = Field(description="Job ID for tracking processing status")
     source_id: str = Field(description="Source ID for the submitted content")
-    status: str = Field(description="Initial job status (always 'queued')")
+    status: str = Field(
+        description="Initial status ('queued' or 'duplicate' for images)"
+    )
     message: str = Field(description="Human-readable status message")
