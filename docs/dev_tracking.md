@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-01-27
+**Last Updated**: 2026-01-28
 
 ## Overview
 
@@ -192,8 +192,34 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Answer questions about specific orders
     - Provide personalized recommendations
 
+#### Ingress Service - Email Filtering
+
+- [ ] Rule-based email filtering before Cloud Task creation (`trackable/api/`)
+    - [ ] Filter by sender domain (whitelist known merchant domains)
+    - [ ] Filter by subject line patterns (e.g., "order confirmation", "shipping notification")
+    - [ ] Filter by email headers (e.g., `X-Mailer`, `List-Unsubscribe`)
+    - [ ] Skip promotional/marketing emails early
+    - [ ] Configurable filter rules (database or config file)
+    - [ ] Log filtered-out emails for debugging/tuning
+
 #### Worker Service - Additional Task Handlers
 
+- [ ] Merchant matching and normalization (`trackable/worker/handlers.py`, `trackable/db/repositories/merchant.py`)
+    - [ ] Look up existing merchant by domain before creating new one
+    - [ ] Normalize merchant names (e.g., "Amazon", "Amazon.com", "AMAZON" → "Amazon")
+    - [ ] Store merchant aliases/alternate names for fuzzy matching
+    - [ ] Use existing `upsert_by_domain()` instead of generating new UUID each time
+    - [ ] Add `get_by_name_or_domain()` method for flexible lookup
+- [ ] Order upsert by order number (`trackable/worker/handlers.py`, `trackable/db/repositories/order.py`)
+    - [ ] Check if order with same `order_number` + `merchant_id` + `user_id` exists
+    - [ ] Update existing order instead of inserting duplicate
+    - [ ] Merge new data (e.g., shipment updates, status changes) with existing order
+    - [ ] Add `upsert_by_order_number()` method to OrderRepository
+- [ ] Handle non-order emails gracefully (`trackable/worker/handlers.py`)
+    - [ ] Detect when input processor returns empty/no order data
+    - [ ] Mark job as completed with appropriate status (e.g., "no_order_found")
+    - [ ] Update source record to indicate non-order content
+    - [ ] Avoid creating empty order records in database
 - [ ] Gmail sync handler (`trackable/worker/handlers.py`)
     - [ ] Implement `handle_gmail_sync()` function
     - [ ] Gmail API integration with incremental sync
@@ -230,6 +256,13 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-01-28
+
+- 📝 Added TODO: Merchant matching and normalization - look up existing merchants, normalize names, avoid duplicate merchants
+- 📝 Added TODO: Rule-based email filtering in ingress service before creating Cloud Tasks
+- 📝 Added TODO: Order upsert by order number - update existing orders instead of inserting duplicates
+- 📝 Added TODO: Handle non-order emails gracefully in worker handlers (detect empty results, mark job appropriately, avoid empty records)
 
 ### 2026-01-27
 

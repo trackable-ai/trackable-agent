@@ -8,9 +8,10 @@ The following steps are done before `git commit`
 
 ## Instructions
 
-1. Check if all Python files pass the linter
+1. Check if all Python files under the project root directory pass the linter
 
     ```bash
+    # run the following command under the project root directory
     uv run black --check --diff . && uv run isort --check --diff .
     ```
 
@@ -19,6 +20,7 @@ The following steps are done before `git commit`
    2. Run `black` and `isort` to fix these issues
 
         ```bash
+        # run the following command under the project root directory
         uv run black . && uv run isort .
         ```
 
