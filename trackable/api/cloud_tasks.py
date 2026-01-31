@@ -6,6 +6,7 @@ the Worker service endpoints for email/image parsing.
 """
 
 import json
+import logging
 import os
 from typing import Any
 
@@ -24,6 +25,8 @@ from trackable.utils.gcp import get_service_account_email, get_worker_service_ur
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "")
 LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
 QUEUE_NAME = os.getenv("CLOUD_TASKS_QUEUE", "order-parsing-tasks")
+
+logger = logging.getLogger(__name__)
 
 
 def create_parse_email_task(
@@ -196,9 +199,13 @@ def _create_task(
     Returns:
         Task name (full resource path or mock name)
     """
+    payload_bytes = json.dumps(payload).encode("utf-8")
+    payload_size = len(payload_bytes)
+
     # Local development mode - skip actual task creation
     if not PROJECT_ID:
         print(f"[LOCAL] Would create task: {task_id} -> {endpoint}")
+        print(f"[LOCAL] Payload size: {payload_size} bytes")
         print(f"[LOCAL] Payload: {json.dumps(payload, indent=2)[:200]}...")
         return f"local-task/{task_id}"
 
@@ -206,6 +213,18 @@ def _create_task(
     client = tasks_v2.CloudTasksClient()
     queue_path = client.queue_path(PROJECT_ID, LOCATION, QUEUE_NAME)
     worker_url = get_worker_service_url()
+
+    logger.info(
+        "Creating Cloud Task",
+        extra={
+            "task_id": task_id,
+            "endpoint": endpoint,
+            "queue_path": queue_path,
+            "worker_url": worker_url,
+            "payload_size": payload_size,
+            "delay_seconds": delay_seconds,
+        },
+    )
 
     # Build OIDC token for authenticated Cloud Run services
     oidc_token = None
@@ -221,7 +240,7 @@ def _create_task(
         http_method=tasks_v2.HttpMethod.POST,
         url=f"{worker_url}{endpoint}",
         headers={"Content-Type": "application/json"},
-        body=json.dumps(payload).encode("utf-8"),
+        body=payload_bytes,
         oidc_token=oidc_token,
     )
 
@@ -238,8 +257,22 @@ def _create_task(
         task.schedule_time = schedule_time
 
     # Create the task
-    response = client.create_task(
-        request=tasks_v2.CreateTaskRequest(parent=queue_path, task=task)
-    )
+    try:
+        response = client.create_task(
+            request=tasks_v2.CreateTaskRequest(parent=queue_path, task=task)
+        )
+    except Exception:
+        logger.exception(
+            "Cloud Tasks create_task failed",
+            extra={
+                "task_id": task_id,
+                "endpoint": endpoint,
+                "queue_path": queue_path,
+                "worker_url": worker_url,
+                "payload_size": payload_size,
+                "delay_seconds": delay_seconds,
+            },
+        )
+        raise
 
     return response.name
