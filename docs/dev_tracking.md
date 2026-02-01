@@ -57,8 +57,10 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - `check_return_windows` - Find orders with expiring return deadlines
     - `get_merchant_info` - Merchant support info and return portal lookup
     - `search_order_by_number` - Find order by merchant order number
+    - `search_orders` - Fuzzy search orders by item name, merchant, or order number
     - User_id injection in chat API for tool context
-    - 23 chatbot tool tests (unit + scenario)
+    - `OrderRepository.search()` with JOIN + ILIKE across order numbers, merchant names, and item names (JSONB `jsonb_array_elements`)
+    - 30 chatbot tool tests (unit + scenario)
 
 #### Ingress Service (API)
 
@@ -251,10 +253,11 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] `trackable/api/routes/chat.py` - Remove `user_id` parameter
 - [ ] User registration/login flow (if self-hosted auth)
 
-#### Chatbot Enhancement (Partial)
+#### Chatbot Enhancement (Remaining)
 
 - [ ] Query merchant return policies (requires PolicyRepository - not yet built)
 - [ ] Provide personalized recommendations (requires order history analysis)
+- [ ] Add integration test for full search_orders → DB flow (currently unit-tested with mocks)
 
 #### Ingress Service - Email Filtering
 
@@ -312,6 +315,12 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-02-01
 
+- ✅ **Fuzzy Order Search** - Added `search_orders` tool and `OrderRepository.search()` for fuzzy matching
+    - `search_orders` tool: fuzzy search by item name, merchant name, or order number
+    - `OrderRepository.search()`: JOINs orders+merchants, ILIKE on order_number/merchant name/item names via `jsonb_array_elements`
+    - Updated chatbot agent instructions to prefer `search_orders` for natural language queries (e.g., "my MacBook order", "Nike shoes")
+    - 7 new tests: 3 unit tests, 2 scenario tests, 1 tool registration test, 1 chatbot wiring test
+    - Total: 171 passing tests (+ 1 pre-existing integration failure)
 - ✅ **Chatbot Enhancement** - Added database-backed tools to chatbot agent (`trackable/agents/chatbot.py`, `trackable/agents/tools/`)
     - Created `trackable/agents/tools/` package with 5 tool functions:
         - `get_user_orders` - List/filter user orders by status with pagination
