@@ -871,7 +871,7 @@ class TestOrderSearch:
                 order_id=order_id,
                 name=name,
                 quantity=1,
-                price=Money(amount="29.99"),
+                price=Money(amount=Decimal("29.99")),
             )
             for name in item_names
         ]
@@ -883,7 +883,7 @@ class TestOrderSearch:
             order_date=now,
             status=status,
             items=items,
-            total=Money(amount="29.99"),
+            total=Money(amount=Decimal("29.99")),
             source_type=SourceType.EMAIL,
             created_at=now,
             updated_at=now,

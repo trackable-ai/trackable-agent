@@ -311,6 +311,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - New models: `OrderTimelineEntry`, `OrderHistoryResponse`
     - Updated merge logic to only merge within same-status rows
     - 167 unit tests passing, integration tests updated
+    - Fixed: Test helper now uses `Decimal` instead of strings for Money amounts (type correctness)
 - ✅ Added integration tests for `OrderRepository.search()` — 6 tests covering item name, merchant name, order number, case-insensitivity, empty results, and user scoping
 - ✅ **Fuzzy Order Search** - Added `search_orders` tool and `OrderRepository.search()` for fuzzy matching
     - `search_orders` tool: fuzzy search by item name, merchant name, or order number
