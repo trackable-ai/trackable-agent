@@ -11,7 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from trackable.api.auth import get_user_id
 from trackable.db import DatabaseConnection, UnitOfWork
-from trackable.models.order import Shipment, ShipmentStatus, ShipmentUpdateRequest
+from trackable.models.order import (
+    Shipment,
+    ShipmentStatus,
+    ShipmentUpdateRequest,
+    TrackingEvent,
+    TrackingEventRequest,
+)
 
 router = APIRouter()
 
@@ -157,4 +163,87 @@ async def update_shipment(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update shipment: {str(e)}",
+        )
+
+
+@router.post(
+    "/orders/{order_id}/shipments/{shipment_id}/events", response_model=Shipment
+)
+async def add_tracking_event(
+    order_id: str,
+    shipment_id: str,
+    request: TrackingEventRequest,
+    user_id: str = Depends(get_user_id),
+) -> Shipment:
+    """
+    Add a tracking event to a shipment.
+
+    This appends a new event to the shipment's tracking history
+    and updates the shipment status to match the event status.
+
+    Args:
+        order_id: Parent order UUID
+        shipment_id: Shipment UUID
+        request: Tracking event data
+        user_id: User ID from X-User-ID header
+
+    Returns:
+        Updated shipment with new event
+
+    Raises:
+        404: Order or shipment not found
+    """
+    _check_db_available()
+
+    try:
+        with UnitOfWork() as uow:
+            # Verify order exists and belongs to user
+            order = uow.orders.get_by_id_for_user(order_id, user_id)
+            if order is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Order not found: {order_id}",
+                )
+
+            shipment = uow.shipments.get_by_id(shipment_id)
+            if shipment is None or shipment.order_id != order_id:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Shipment not found: {shipment_id}",
+                )
+
+            # Create tracking event
+            event = TrackingEvent(
+                timestamp=request.timestamp or datetime.now(timezone.utc),
+                status=request.status,
+                location=request.location,
+                description=request.description,
+            )
+
+            # Add event (this also updates shipment status)
+            success = uow.shipments.add_tracking_event(shipment_id, event)
+            if not success:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to add tracking event",
+                )
+
+            uow.commit()
+
+            # Fetch updated shipment
+            updated_shipment = uow.shipments.get_by_id(shipment_id)
+            if updated_shipment is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to retrieve updated shipment",
+                )
+
+            return updated_shipment
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to add tracking event: {str(e)}",
         )

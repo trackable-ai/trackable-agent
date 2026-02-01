@@ -17,6 +17,7 @@ from trackable.models.order import (
     Carrier,
     Shipment,
     ShipmentStatus,
+    TrackingEvent,
 )
 
 
@@ -219,3 +220,104 @@ class TestUpdateShipment:
 
             assert response.status_code == 404
             assert "Order not found" in response.json()["detail"]
+
+
+class TestAddTrackingEvent:
+    """Tests for POST /api/v1/orders/{order_id}/shipments/{shipment_id}/events endpoint."""
+
+    def test_add_tracking_event_success(
+        self,
+        client: TestClient,
+        sample_shipment: Shipment,
+        sample_order_id: str,
+        mock_db_initialized,
+    ):
+        """Test adding a tracking event."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            mock_uow.shipments.get_by_id.return_value = sample_shipment
+            mock_uow.shipments.add_tracking_event.return_value = True
+
+            # Create updated shipment with event
+            now = datetime.now(timezone.utc)
+            updated_shipment = Shipment(
+                id=sample_shipment.id,
+                order_id=sample_order_id,
+                tracking_number=sample_shipment.tracking_number,
+                carrier=sample_shipment.carrier,
+                status=ShipmentStatus.OUT_FOR_DELIVERY,
+                events=[
+                    TrackingEvent(
+                        timestamp=now,
+                        status=ShipmentStatus.OUT_FOR_DELIVERY,
+                        location="Local Facility",
+                        description="Out for delivery",
+                    )
+                ],
+            )
+            mock_uow.shipments.get_by_id.side_effect = [
+                sample_shipment,
+                updated_shipment,
+            ]
+
+            response = client.post(
+                f"/api/v1/orders/{sample_order_id}/shipments/{sample_shipment.id}/events",
+                headers=TEST_HEADERS,
+                json={
+                    "status": "out_for_delivery",
+                    "location": "Local Facility",
+                    "description": "Out for delivery",
+                },
+            )
+
+            assert response.status_code == 200
+            mock_uow.shipments.add_tracking_event.assert_called_once()
+            data = response.json()
+            assert len(data["events"]) == 1
+            assert data["events"][0]["status"] == "out_for_delivery"
+
+    def test_add_tracking_event_order_not_found(
+        self, client: TestClient, mock_db_initialized
+    ):
+        """Test adding event when order doesn't exist."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = None
+
+            fake_order_id = str(uuid4())
+            fake_shipment_id = str(uuid4())
+            response = client.post(
+                f"/api/v1/orders/{fake_order_id}/shipments/{fake_shipment_id}/events",
+                headers=TEST_HEADERS,
+                json={"status": "delivered"},
+            )
+
+            assert response.status_code == 404
+            assert "Order not found" in response.json()["detail"]
+
+    def test_add_tracking_event_shipment_not_found(
+        self, client: TestClient, sample_order_id: str, mock_db_initialized
+    ):
+        """Test adding event when shipment doesn't exist."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            mock_uow.shipments.get_by_id.return_value = None
+
+            fake_shipment_id = str(uuid4())
+            response = client.post(
+                f"/api/v1/orders/{sample_order_id}/shipments/{fake_shipment_id}/events",
+                headers=TEST_HEADERS,
+                json={"status": "delivered"},
+            )
+
+            assert response.status_code == 404
+            assert "Shipment not found" in response.json()["detail"]
