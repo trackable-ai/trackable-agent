@@ -6,6 +6,7 @@ Shipments are accessed through their parent orders for authorization.
 """
 
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -13,6 +14,7 @@ from trackable.api.auth import get_user_id
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import (
     Shipment,
+    ShipmentCreateRequest,
     ShipmentStatus,
     ShipmentUpdateRequest,
     TrackingEvent,
@@ -61,6 +63,74 @@ async def list_shipments(
             )
 
         return uow.shipments.get_by_order(order_id)
+
+
+@router.post("/orders/{order_id}/shipments", response_model=Shipment, status_code=201)
+async def create_shipment(
+    order_id: str,
+    request: ShipmentCreateRequest,
+    user_id: str = Depends(get_user_id),
+) -> Shipment:
+    """
+    Create a new shipment for an order.
+
+    Args:
+        order_id: Parent order UUID
+        request: Shipment creation data
+        user_id: User ID from X-User-ID header
+
+    Returns:
+        Created shipment
+
+    Raises:
+        404: Order not found
+        409: Shipment with tracking number already exists
+    """
+    _check_db_available()
+
+    try:
+        with UnitOfWork() as uow:
+            # Verify order exists and belongs to user
+            order = uow.orders.get_by_id_for_user(order_id, user_id)
+            if order is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Order not found: {order_id}",
+                )
+
+            # Check for duplicate tracking number
+            if request.tracking_number:
+                existing = uow.shipments.get_by_tracking_number(request.tracking_number)
+                if existing is not None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail=f"Shipment with tracking number already exists: {request.tracking_number}",
+                    )
+
+            # Create shipment model
+            shipment = Shipment(
+                id=str(uuid4()),
+                order_id=order_id,
+                tracking_number=request.tracking_number,
+                carrier=request.carrier,
+                status=request.status,
+                shipping_address=request.shipping_address,
+                return_address=request.return_address,
+                estimated_delivery=request.estimated_delivery,
+            )
+
+            created = uow.shipments.create(shipment)
+            uow.commit()
+
+            return created
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create shipment: {str(e)}",
+        )
 
 
 @router.get("/orders/{order_id}/shipments/{shipment_id}", response_model=Shipment)

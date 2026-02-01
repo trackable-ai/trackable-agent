@@ -353,6 +353,25 @@ class OrderHistoryResponse(BaseModel):
     timeline: list[OrderTimelineEntry]
 
 
+class ShipmentCreateRequest(BaseModel):
+    """Request body for creating a shipment."""
+
+    tracking_number: Optional[str] = Field(
+        default=None, description="Carrier tracking number"
+    )
+    carrier: Carrier = Field(default=Carrier.UNKNOWN, description="Shipping carrier")
+    status: ShipmentStatus = Field(
+        default=ShipmentStatus.PENDING, description="Initial shipment status"
+    )
+    shipping_address: Optional[str] = Field(
+        default=None, description="Shipping address"
+    )
+    return_address: Optional[str] = Field(default=None, description="Return address")
+    estimated_delivery: Optional[datetime] = Field(
+        default=None, description="Estimated delivery date"
+    )
+
+
 class ShipmentUpdateRequest(BaseModel):
     """Request body for updating a shipment."""
 

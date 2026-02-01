@@ -127,6 +127,124 @@ class TestListShipments:
             assert "Order not found" in response.json()["detail"]
 
 
+class TestCreateShipment:
+    """Tests for POST /api/v1/orders/{order_id}/shipments endpoint."""
+
+    def test_create_shipment_success(
+        self, client: TestClient, sample_order_id: str, mock_db_initialized
+    ):
+        """Test creating a new shipment."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            # No existing shipment with this tracking number
+            mock_uow.shipments.get_by_tracking_number.return_value = None
+
+            # Mock create to return the shipment
+            def create_shipment(shipment):
+                return shipment
+
+            mock_uow.shipments.create.side_effect = create_shipment
+
+            response = client.post(
+                f"/api/v1/orders/{sample_order_id}/shipments",
+                headers=TEST_HEADERS,
+                json={
+                    "tracking_number": "1Z999AA10123456784",
+                    "carrier": "ups",
+                    "status": "pending",
+                    "shipping_address": "123 Main St, San Francisco, CA 94102",
+                },
+            )
+
+            assert response.status_code == 201
+            data = response.json()
+            assert data["tracking_number"] == "1Z999AA10123456784"
+            assert data["carrier"] == "ups"
+            assert data["status"] == "pending"
+            assert data["order_id"] == sample_order_id
+            mock_uow.shipments.create.assert_called_once()
+            mock_uow.commit.assert_called_once()
+
+    def test_create_shipment_minimal(
+        self, client: TestClient, sample_order_id: str, mock_db_initialized
+    ):
+        """Test creating a shipment with minimal data."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+
+            def create_shipment(shipment):
+                return shipment
+
+            mock_uow.shipments.create.side_effect = create_shipment
+
+            # Only required fields (none are required, use defaults)
+            response = client.post(
+                f"/api/v1/orders/{sample_order_id}/shipments",
+                headers=TEST_HEADERS,
+                json={},
+            )
+
+            assert response.status_code == 201
+            data = response.json()
+            assert data["carrier"] == "unknown"
+            assert data["status"] == "pending"
+            assert data["tracking_number"] is None
+
+    def test_create_shipment_order_not_found(
+        self, client: TestClient, mock_db_initialized
+    ):
+        """Test creating shipment when order doesn't exist."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = None
+
+            fake_order_id = str(uuid4())
+            response = client.post(
+                f"/api/v1/orders/{fake_order_id}/shipments",
+                headers=TEST_HEADERS,
+                json={"tracking_number": "1234567890"},
+            )
+
+            assert response.status_code == 404
+            assert "Order not found" in response.json()["detail"]
+
+    def test_create_shipment_duplicate_tracking_number(
+        self,
+        client: TestClient,
+        sample_shipment: Shipment,
+        sample_order_id: str,
+        mock_db_initialized,
+    ):
+        """Test creating shipment with duplicate tracking number."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            # Return existing shipment with same tracking number
+            mock_uow.shipments.get_by_tracking_number.return_value = sample_shipment
+
+            response = client.post(
+                f"/api/v1/orders/{sample_order_id}/shipments",
+                headers=TEST_HEADERS,
+                json={"tracking_number": "1Z999AA10123456784"},
+            )
+
+            assert response.status_code == 409
+            assert "already exists" in response.json()["detail"]
+            mock_uow.shipments.create.assert_not_called()
+
+
 class TestGetShipment:
     """Tests for GET /api/v1/orders/{order_id}/shipments/{shipment_id} endpoint."""
 

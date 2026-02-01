@@ -687,6 +687,66 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+    post:
+      tags:
+        - shipments
+      summary: Create a shipment for an order
+      description: Create a new shipment for a specific order.
+      operationId: createShipment
+      security:
+        - UserIdAuth: []
+      parameters:
+        - name: order_id
+          in: path
+          description: Order ID (UUID)
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ShipmentCreateRequest"
+      responses:
+        "201":
+          description: Shipment created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Shipment"
+        "401":
+          description: Missing X-User-ID header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Shipment with tracking number already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Database unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/orders/{order_id}/shipments/{shipment_id}:
     get:
       tags:
@@ -2171,6 +2231,34 @@ components:
           description: List of status snapshots ordered by status progression
           items:
             $ref: "#/components/schemas/OrderTimelineEntry"
+
+    ShipmentCreateRequest:
+      type: object
+      description: Request body for creating a shipment
+      properties:
+        tracking_number:
+          type: string
+          description: Carrier tracking number
+          nullable: true
+          example: "1Z999AA10123456784"
+        carrier:
+          $ref: "#/components/schemas/Carrier"
+        status:
+          $ref: "#/components/schemas/ShipmentStatus"
+        shipping_address:
+          type: string
+          description: Shipping address
+          nullable: true
+          example: "123 Main St, San Francisco, CA 94102"
+        return_address:
+          type: string
+          description: Return address
+          nullable: true
+        estimated_delivery:
+          type: string
+          format: date-time
+          description: Estimated delivery date
+          nullable: true
 
     ShipmentUpdateRequest:
       type: object
