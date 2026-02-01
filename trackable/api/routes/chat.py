@@ -53,27 +53,36 @@ async def _get_or_create_session(user_id: str) -> str:
     return session.id
 
 
-def _build_prompt_from_messages(messages: list) -> str:
+def _build_prompt_from_messages(messages: list, user_id: str | None = None) -> str:
     """
     Build a prompt string from the messages list.
 
     For now, we concatenate messages. The ADK agent maintains its own
     conversation history via sessions, so we primarily use the last user message.
+    Injects user_id context so the agent can pass it to database tools.
     """
     # Find the last user message
+    prompt = ""
     for msg in reversed(messages):
         if msg.role == MessageRole.USER:
-            return msg.content
+            prompt = msg.content
+            break
 
-    # Fallback: concatenate all messages
-    parts = []
-    for msg in messages:
-        prefix = {"system": "System", "user": "User", "assistant": "Assistant"}.get(
-            msg.role.value, "User"
-        )
-        parts.append(f"{prefix}: {msg.content}")
+    if not prompt:
+        # Fallback: concatenate all messages
+        parts = []
+        for msg in messages:
+            prefix = {"system": "System", "user": "User", "assistant": "Assistant"}.get(
+                msg.role.value, "User"
+            )
+            parts.append(f"{prefix}: {msg.content}")
+        prompt = "\n".join(parts)
 
-    return "\n".join(parts)
+    # Inject user_id context for tool calls
+    if user_id:
+        prompt = f"[Context: The current user_id is '{user_id}'. Use this for all tool calls that require user_id.]\n\n{prompt}"
+
+    return prompt
 
 
 async def _run_agent(user_id: str, prompt: str) -> str:
@@ -187,7 +196,7 @@ async def chat_completions(request: ChatCompletionRequest):
     """
     try:
         user_id = request.user or "default_user"
-        prompt = _build_prompt_from_messages(request.messages)
+        prompt = _build_prompt_from_messages(request.messages, user_id=user_id)
         request_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
         model = request.model

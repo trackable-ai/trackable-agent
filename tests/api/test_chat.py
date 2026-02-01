@@ -206,6 +206,29 @@ class TestChatCompletionsStreaming:
             assert len(full_content) > 0
 
 
+class TestUserIdInjection:
+    """Test that user_id is injected into prompts for tool access."""
+
+    def test_prompt_includes_user_id(self):
+        from trackable.api.routes.chat import _build_prompt_from_messages
+        from trackable.models.chat import ChatMessage, MessageRole
+
+        messages = [ChatMessage(role=MessageRole.USER, content="Show my orders")]
+        result = _build_prompt_from_messages(messages, user_id="usr-abc-123")
+
+        assert "usr-abc-123" in result
+
+    def test_prompt_without_user_id(self):
+        from trackable.api.routes.chat import _build_prompt_from_messages
+        from trackable.models.chat import ChatMessage, MessageRole
+
+        messages = [ChatMessage(role=MessageRole.USER, content="Hello")]
+        result = _build_prompt_from_messages(messages, user_id=None)
+
+        # Should still work, just without user_id context
+        assert "Hello" in result
+
+
 class TestChatCompletionsValidation:
     """Test request validation"""
 
