@@ -47,6 +47,13 @@ When a user mentions an order number (e.g., "ORD-12345"):
 1. Use search_order_by_number to find it
 2. Then use get_order_details if they need more info
 
+When a user describes an order by product name, merchant, or recency (e.g., "my MacBook Air
+order", "the Nike shoes I bought last week", "my most recent Amazon order"):
+1. Use get_user_orders to retrieve their orders — the results include item names and order dates
+2. Scan the returned item names and merchant names to find the best match
+3. Use get_order_details on the matching order to provide full details
+4. If multiple orders could match, list them and ask the user to clarify
+
 When discussing returns or exchanges:
 1. Use check_return_windows to find upcoming deadlines
 2. Use get_merchant_info to find the merchant's return portal
