@@ -14,5 +14,9 @@
   },
   "permissions": {
     "deny": ["Bash(sudo *)"]
+  },
+  "attribution": {
+    "commit": "",
+    "pr": ""
   }
 }

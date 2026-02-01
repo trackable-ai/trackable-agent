@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-01-28
+**Last Updated**: 2026-02-01
 
 ## Overview
 
@@ -202,6 +202,34 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### ⏸️ Not Started
 
+#### Order History Preservation
+
+- [ ] **Extend unique constraint to include order status** (Migration 006)
+    - Change unique constraint from `(user_id, merchant_id, order_number)` to `(user_id, merchant_id, order_number, status)`
+    - Each order status gets its own row, preserving history as orders progress (e.g., detected → confirmed → shipped → delivered)
+    - Upsert logic: only upsert when same email produces the same order number + same status; otherwise insert a new row
+    - Update `_merge_orders()` in `trackable/db/repositories/order.py` to only merge within same-status rows
+    - Update `get_by_unique_key()` to include status in lookup
+    - Update `upsert_by_order_number()` to use new unique key semantics
+    - Update `trackable/db/tables.py` to reflect new constraint
+    - Update database schema docs (`docs/database_schema.md`)
+- [ ] **New Order Query APIs** (`trackable/api/routes/orders.py`)
+    - [ ] `GET /api/v1/orders/{order_number}/history` - Get full order history (all status rows for an order) to display timeline
+    - [ ] `GET /api/v1/orders/{order_number}/latest` - Get latest order status (most recent row by status progression)
+    - [ ] Update `GET /api/v1/orders` to return only latest status per order by default (deduplicated view)
+    - [ ] Add `?include_history=true` query param to `GET /api/v1/orders` for full history
+- [ ] **Order history repository methods** (`trackable/db/repositories/order.py`)
+    - [ ] `get_order_history()` - Get all rows for a given user_id + merchant_id + order_number, ordered by status progression
+    - [ ] `get_latest_order()` - Get the most recent status row for a given order
+    - [ ] Update `get_by_user()` to deduplicate by default (return only latest status per order)
+- [ ] **Order history response models** (`trackable/models/order.py`)
+    - [ ] `OrderHistoryResponse` - Timeline view with list of order snapshots
+    - [ ] `OrderTimelineEntry` - Individual status snapshot with timestamp
+- [ ] **Tests for order history**
+    - [ ] Unit tests for new repository methods
+    - [ ] Unit tests for new API endpoints
+    - [ ] Integration tests for history preservation across upserts
+
 #### Authentication & Session Management
 
 - [ ] Implement user authentication
@@ -278,6 +306,12 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-02-01
+
+- 📝 Added TODO: Order history preservation — extend unique constraint from `(user_id, merchant_id, order_number)` to `(user_id, merchant_id, order_number, status)` so each status transition creates a new row instead of overwriting
+- 📝 Added TODO: New order query APIs — `GET /orders/{order_number}/history` (timeline), `GET /orders/{order_number}/latest` (current status), updated list endpoint with deduplication
+- 📝 Added TODO: Order history repository methods and response models
 
 ### 2026-01-28
 
