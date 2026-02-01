@@ -18,14 +18,7 @@ from trackable.db.repositories.base import (
     models_to_jsonb,
 )
 from trackable.db.tables import merchants, orders
-from trackable.models.order import (
-    Item,
-    Merchant,
-    Money,
-    Order,
-    OrderStatus,
-    SourceType,
-)
+from trackable.models.order import Item, Merchant, Money, Order, OrderStatus, SourceType
 
 # Order status progression - higher index = later in lifecycle
 # Used to prevent status regression during upsert
@@ -249,7 +242,7 @@ class OrderRepository(BaseRepository[Order]):
 
     def get_by_id_for_user(self, order_id: str, user_id: str) -> Order | None:
         """
-        Get order by ID, scoped to a specific user.
+        Get latest-status order by ID, scoped to a specific user.
 
         Args:
             order_id: Order ID
@@ -258,9 +251,15 @@ class OrderRepository(BaseRepository[Order]):
         Returns:
             Order if found and belongs to user, None otherwise
         """
-        stmt = select(self.table).where(
-            self.table.c.id == UUID(order_id),
-            self.table.c.user_id == UUID(user_id),
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                self.table.c.id == UUID(order_id),
+                self.table.c.user_id == UUID(user_id),
+            )
+            .order_by(status_order.desc())
+            .limit(1)
         )
         result = self.session.execute(stmt)
         row = result.fetchone()

@@ -6,6 +6,7 @@ by mocking the database layer.
 """
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -13,14 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from trackable.api.main import app
-from trackable.models.order import (
-    Item,
-    Merchant,
-    Money,
-    Order,
-    OrderStatus,
-    SourceType,
-)
+from trackable.models.order import Item, Merchant, Money, Order, OrderStatus, SourceType
 
 
 @pytest.fixture
@@ -51,10 +45,10 @@ def sample_order() -> Order:
                 order_id="",
                 name="Test Item",
                 quantity=1,
-                price=Money(amount=29.99, currency="USD"),
+                price=Money(amount=Decimal(29.99), currency="USD"),
             )
         ],
-        total=Money(amount=29.99, currency="USD"),
+        total=Money(amount=Decimal(29.99), currency="USD"),
         source_type=SourceType.EMAIL,
         is_monitored=True,
         created_at=now,
