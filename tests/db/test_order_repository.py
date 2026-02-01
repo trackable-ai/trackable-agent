@@ -655,3 +655,41 @@ class TestGetLatestOrder:
         order_repo.session.execute.return_value.fetchone.return_value = None
         result = order_repo.get_latest_order(str(uuid4()), str(uuid4()), "ORD-001")
         assert result is None
+
+
+class TestGetByUserDeduplicated:
+    def test_default_uses_distinct_on(self, order_repo: OrderRepository):
+        """Default get_by_user uses DISTINCT ON for deduplication."""
+        order_repo.session.execute.return_value.fetchall.return_value = []
+        order_repo.get_by_user(user_id=str(uuid4()))
+        compiled = str(
+            order_repo.session.execute.call_args[0][0].compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+        assert "distinct" in compiled.lower()
+
+    def test_include_history_skips_distinct(self, order_repo: OrderRepository):
+        """include_history=True returns all rows without DISTINCT ON."""
+        order_repo.session.execute.return_value.fetchall.return_value = []
+        order_repo.get_by_user(user_id=str(uuid4()), include_history=True)
+        compiled = str(
+            order_repo.session.execute.call_args[0][0].compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+        assert "distinct" not in compiled.lower()
+
+
+class TestGetByOrderNumberLatest:
+    def test_uses_status_ordering(self, order_repo: OrderRepository):
+        """get_by_order_number sorts by status progression DESC."""
+        order_repo.session.execute.return_value.fetchone.return_value = None
+        order_repo.get_by_order_number(str(uuid4()), "ORD-001")
+        compiled = str(
+            order_repo.session.execute.call_args[0][0].compile(
+                compile_kwargs={"literal_binds": True}
+            )
+        )
+        assert "limit" in compiled.lower()
+        assert "case" in compiled.lower()

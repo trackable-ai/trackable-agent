@@ -136,25 +136,54 @@ class OrderRepository(BaseRepository[Order]):
         status: OrderStatus | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_history: bool = False,
     ) -> list[Order]:
         """
         Get orders for a user.
+
+        By default, deduplicates using DISTINCT ON to return only the latest
+        status per order. Set include_history=True to return all rows.
 
         Args:
             user_id: User ID
             status: Optional status filter
             limit: Maximum number of orders
             offset: Pagination offset
+            include_history: If True, return all status rows
 
         Returns:
             List of orders
         """
-        stmt = select(self.table).where(self.table.c.user_id == UUID(user_id))
-
-        if status:
-            stmt = stmt.where(self.table.c.status == status.value)
-
-        stmt = stmt.order_by(self.table.c.created_at.desc()).limit(limit).offset(offset)
+        if include_history:
+            stmt = select(self.table).where(self.table.c.user_id == UUID(user_id))
+            if status:
+                stmt = stmt.where(self.table.c.status == status.value)
+            stmt = (
+                stmt.order_by(self.table.c.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        else:
+            status_order = self._status_order_expression()
+            stmt = (
+                select(self.table)
+                .distinct(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                )
+                .where(self.table.c.user_id == UUID(user_id))
+                .order_by(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                    status_order.desc(),
+                )
+            )
+            if status:
+                subq = stmt.subquery()
+                stmt = select(subq).where(subq.c.status == status.value)
+            stmt = stmt.limit(limit).offset(offset)
 
         result = self.session.execute(stmt)
         return [self._row_to_model(row) for row in result.fetchall()]
@@ -163,25 +192,57 @@ class OrderRepository(BaseRepository[Order]):
         self,
         user_id: str,
         status: OrderStatus | None = None,
+        include_history: bool = False,
     ) -> int:
         """
         Count orders for a user.
 
+        By default counts distinct orders (one per order_number+merchant).
+        Set include_history=True to count all status rows.
+
         Args:
             user_id: User ID
             status: Optional status filter
+            include_history: If True, count all status rows
 
         Returns:
             Number of orders
         """
-        stmt = (
-            select(func.count())
-            .select_from(self.table)
-            .where(self.table.c.user_id == UUID(user_id))
-        )
-
-        if status:
-            stmt = stmt.where(self.table.c.status == status.value)
+        if include_history:
+            stmt = (
+                select(func.count())
+                .select_from(self.table)
+                .where(self.table.c.user_id == UUID(user_id))
+            )
+            if status:
+                stmt = stmt.where(self.table.c.status == status.value)
+        else:
+            # Count distinct (user_id, merchant_id, order_number) combos
+            status_order = self._status_order_expression()
+            subq = (
+                select(self.table)
+                .distinct(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                )
+                .where(self.table.c.user_id == UUID(user_id))
+                .order_by(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                    status_order.desc(),
+                )
+                .subquery()
+            )
+            if status:
+                stmt = (
+                    select(func.count())
+                    .select_from(subq)
+                    .where(subq.c.status == status.value)
+                )
+            else:
+                stmt = select(func.count()).select_from(subq)
 
         result = self.session.execute(stmt)
         return result.scalar() or 0
@@ -211,18 +272,27 @@ class OrderRepository(BaseRepository[Order]):
 
     def get_by_order_number(self, user_id: str, order_number: str) -> Order | None:
         """
-        Get order by merchant order number.
+        Get latest-status order by merchant order number.
+
+        With order history, multiple rows can share the same order_number.
+        This returns the row with the highest status in the progression.
 
         Args:
             user_id: User ID
             order_number: Merchant order number
 
         Returns:
-            Order or None
+            Order with the highest status, or None
         """
-        stmt = select(self.table).where(
-            self.table.c.user_id == UUID(user_id),
-            self.table.c.order_number == order_number,
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                self.table.c.user_id == UUID(user_id),
+                self.table.c.order_number == order_number,
+            )
+            .order_by(status_order.desc())
+            .limit(1)
         )
         result = self.session.execute(stmt)
         row = result.fetchone()
