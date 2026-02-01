@@ -205,3 +205,70 @@ class TestOrderDetailWithShipmentsScenario:
         assert ship["carrier"] == "ups"
         assert ship["tracking_number"] == "1Z999AA10123456784"
         assert ship["estimated_delivery"] is not None
+
+
+class TestFuzzySearchScenario:
+    """Scenario: User asks 'Where is my MacBook order?'."""
+
+    @patch("trackable.agents.tools.order_tools.UnitOfWork")
+    def test_search_finds_order_by_item_name(self, mock_uow_cls: MagicMock):
+        from trackable.agents.tools.order_tools import search_orders
+
+        orders = [
+            _make_full_order(
+                "APL-001",
+                "Apple Store",
+                OrderStatus.SHIPPED,
+                "1299.00",
+                [
+                    {"name": "MacBook Air M3 13-inch", "price": "1299.00"},
+                ],
+            ),
+        ]
+
+        mock_uow = MagicMock()
+        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
+        mock_uow.__exit__ = MagicMock(return_value=False)
+        mock_uow.orders.search.return_value = orders
+        mock_uow_cls.return_value = mock_uow
+
+        result = search_orders(user_id="user-123", query="MacBook")
+
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["orders"][0]["items"] == ["MacBook Air M3 13-inch"]
+        assert result["orders"][0]["merchant"] == "Apple Store"
+        assert result["orders"][0]["status"] == "shipped"
+
+    @patch("trackable.agents.tools.order_tools.UnitOfWork")
+    def test_search_finds_orders_by_merchant(self, mock_uow_cls: MagicMock):
+        from trackable.agents.tools.order_tools import search_orders
+
+        orders = [
+            _make_full_order(
+                "AMZ-001",
+                "Amazon",
+                OrderStatus.DELIVERED,
+                "45.99",
+                [{"name": "USB-C Hub", "price": "45.99"}],
+            ),
+            _make_full_order(
+                "AMZ-002",
+                "Amazon",
+                OrderStatus.SHIPPED,
+                "29.99",
+                [{"name": "Phone Case", "price": "29.99"}],
+            ),
+        ]
+
+        mock_uow = MagicMock()
+        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
+        mock_uow.__exit__ = MagicMock(return_value=False)
+        mock_uow.orders.search.return_value = orders
+        mock_uow_cls.return_value = mock_uow
+
+        result = search_orders(user_id="user-123", query="Amazon")
+
+        assert result["count"] == 2
+        assert result["orders"][0]["merchant"] == "Amazon"
+        assert result["orders"][1]["merchant"] == "Amazon"
