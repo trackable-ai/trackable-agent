@@ -368,8 +368,11 @@ class OrderRepository(BaseRepository[Order]):
         """
         Merge incoming order data with existing order.
 
+        Under the new order history model, merge only happens between rows
+        with the same status (status is part of the unique key). Status is
+        never changed during merge.
+
         Merge strategy:
-        - Status: Only progress forward, never regress
         - Items: Replace with incoming if provided
         - Notes: Append new notes
         - Money fields: Use incoming if provided, else keep existing
@@ -387,20 +390,6 @@ class OrderRepository(BaseRepository[Order]):
         """
         now = datetime.now(timezone.utc)
         updates: dict[str, Any] = {"updated_at": now}
-
-        # Status progression - only move forward
-        existing_idx = (
-            ORDER_STATUS_PROGRESSION.index(existing.status)
-            if existing.status in ORDER_STATUS_PROGRESSION
-            else 0
-        )
-        incoming_idx = (
-            ORDER_STATUS_PROGRESSION.index(incoming.status)
-            if incoming.status in ORDER_STATUS_PROGRESSION
-            else 0
-        )
-        if incoming_idx > existing_idx:
-            updates["status"] = incoming.status.value
 
         # Order date - use incoming if existing is None
         if existing.order_date is None and incoming.order_date is not None:
@@ -480,11 +469,12 @@ class OrderRepository(BaseRepository[Order]):
 
     def upsert_by_order_number(self, order: Order) -> tuple[Order, bool]:
         """
-        Insert or update order by unique key (user_id + merchant_id + order_number).
+        Insert or update order by unique key (user_id + merchant_id + order_number + status).
 
-        If an order with the same order_number, merchant_id, and user_id exists,
-        the existing order is updated with merged data. Otherwise, a new order
-        is created.
+        If an order with the same order_number, merchant_id, user_id, and status
+        exists, the existing order is updated with merged data. Otherwise, a new
+        order row is created. This means a new status for the same order creates
+        a new row (preserving order history).
 
         Args:
             order: Order to upsert
@@ -492,11 +482,12 @@ class OrderRepository(BaseRepository[Order]):
         Returns:
             Tuple of (Order, is_new) where is_new is True if a new order was created
         """
-        # Check for existing order by unique key
+        # Check for existing order by unique key (now includes status)
         existing = self.get_by_unique_key(
             user_id=order.user_id,
             merchant_id=order.merchant.id,
             order_number=order.order_number,
+            status=order.status,
         )
 
         if existing is None:

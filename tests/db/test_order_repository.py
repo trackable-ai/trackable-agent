@@ -102,56 +102,26 @@ class TestOrderStatusProgression:
 class TestMergeOrders:
     """Tests for _merge_orders method."""
 
-    def test_merge_status_progression(
+    def test_merge_same_status_does_not_set_status(
         self,
         order_repo: OrderRepository,
         sample_order: Order,
         sample_merchant: Merchant,
     ):
-        """Test that status progresses forward during merge."""
-        existing = sample_order
-        existing.status = OrderStatus.CONFIRMED
-
+        """Merge never changes status (both have same status under new semantics)."""
+        existing = sample_order  # CONFIRMED
         incoming = Order(
             id=str(uuid4()),
             user_id=existing.user_id,
             merchant=sample_merchant,
             order_number=existing.order_number,
-            status=OrderStatus.SHIPPED,  # Higher status
+            status=existing.status,  # Same status
             source_type=SourceType.EMAIL,
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
-
         updates = order_repo._merge_orders(existing, incoming)
-
-        assert "status" in updates
-        assert updates["status"] == OrderStatus.SHIPPED.value
-
-    def test_merge_status_no_regression(
-        self,
-        order_repo: OrderRepository,
-        sample_order: Order,
-        sample_merchant: Merchant,
-    ):
-        """Test that status does not regress during merge."""
-        existing = sample_order
-        existing.status = OrderStatus.SHIPPED
-
-        incoming = Order(
-            id=str(uuid4()),
-            user_id=existing.user_id,
-            merchant=sample_merchant,
-            order_number=existing.order_number,
-            status=OrderStatus.DETECTED,  # Lower status
-            source_type=SourceType.EMAIL,
-            created_at=datetime.now(timezone.utc),
-            updated_at=datetime.now(timezone.utc),
-        )
-
-        updates = order_repo._merge_orders(existing, incoming)
-
-        assert "status" not in updates  # Status should not be updated
+        assert "status" not in updates
 
     def test_merge_notes_appended(
         self,
@@ -581,3 +551,34 @@ class TestGetByUniqueKey:
         assert "order_number" in compiled.lower()
 
 
+class TestUpsertNewSemantics:
+    """Tests for upsert with status-aware unique key."""
+
+    def test_upsert_new_status_creates_new_row(
+        self,
+        order_repo: OrderRepository,
+        sample_order: Order,
+        sample_merchant: Merchant,
+    ):
+        """Different status -> new row (is_new=True)."""
+        incoming = Order(
+            id=str(uuid4()),
+            user_id=sample_order.user_id,
+            merchant=sample_merchant,
+            order_number=sample_order.order_number,
+            status=OrderStatus.SHIPPED,
+            source_type=SourceType.EMAIL,
+            created_at=datetime.now(timezone.utc),
+            updated_at=datetime.now(timezone.utc),
+        )
+
+        # get_by_unique_key returns None (no existing row for this status)
+        order_repo.session.execute.return_value.fetchone.return_value = None
+
+        from unittest.mock import patch
+
+        with patch.object(order_repo, "create", return_value=incoming) as mock_create:
+            result, is_new = order_repo.upsert_by_order_number(incoming)
+
+        assert is_new is True
+        mock_create.assert_called_once_with(incoming)
