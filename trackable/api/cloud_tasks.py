@@ -8,6 +8,7 @@ the Worker service endpoints for email/image parsing.
 import json
 import logging
 import os
+import time
 from typing import Any
 
 from google.cloud import tasks_v2
@@ -214,6 +215,9 @@ def _create_task(
     queue_path = client.queue_path(PROJECT_ID, LOCATION, QUEUE_NAME)
     worker_url = get_worker_service_url()
 
+    # Build OIDC token for authenticated Cloud Run services
+    service_account = get_service_account_email()
+
     logger.info(
         "Creating Cloud Task",
         extra={
@@ -224,13 +228,12 @@ def _create_task(
                 "worker_url": worker_url,
                 "payload_size": payload_size,
                 "delay_seconds": delay_seconds,
+                "service_account": service_account,
             }
         },
     )
 
-    # Build OIDC token for authenticated Cloud Run services
     oidc_token = None
-    service_account = get_service_account_email()
     if worker_url.startswith("https://") and service_account:
         oidc_token = tasks_v2.OidcToken(
             service_account_email=service_account,
@@ -255,7 +258,7 @@ def _create_task(
     # Add delay if specified
     if delay_seconds > 0:
         schedule_time = timestamp_pb2.Timestamp()
-        schedule_time.FromSeconds(int(schedule_time.ToSeconds()) + delay_seconds)
+        schedule_time.FromSeconds(int(time.time()) + delay_seconds)
         task.schedule_time = schedule_time
 
     # Create the task
