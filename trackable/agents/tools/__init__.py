@@ -6,6 +6,7 @@ from trackable.agents.tools.order_tools import (
     get_order_details,
     get_user_orders,
     search_order_by_number,
+    search_orders,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "get_order_details",
     "get_user_orders",
     "search_order_by_number",
+    "search_orders",
 ]

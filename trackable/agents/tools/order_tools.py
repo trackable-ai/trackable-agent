@@ -238,3 +238,54 @@ def search_order_by_number(user_id: str, order_number: str) -> dict:
             "is_monitored": order.is_monitored,
         },
     }
+
+
+def search_orders(user_id: str, query: str, limit: int = 10) -> dict:
+    """Search orders by item name, merchant name, or order number.
+
+    Use this tool when the user describes an order by product name, brand, or
+    merchant rather than by order number. For example: "my MacBook order",
+    "Nike shoes", "Amazon purchase".
+
+    Args:
+        user_id: The user's unique identifier.
+        query: Search text to match against item names, merchant names,
+            and order numbers. Case-insensitive partial matching.
+        limit: Maximum number of results to return (default 10).
+
+    Returns:
+        dict: Matching orders with item names, merchant, status, and totals.
+    """
+    if not query or not query.strip():
+        return {
+            "status": "error",
+            "message": "A search query is required. Ask the user what they're looking for.",
+        }
+
+    with UnitOfWork() as uow:
+        orders = uow.orders.search(user_id, query.strip(), limit)
+
+    order_summaries = []
+    for order in orders:
+        item_names = [item.name for item in order.items]
+        order_summaries.append(
+            {
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "merchant": order.merchant.name,
+                "status": order.status.value,
+                "total": str(order.total) if order.total else "unknown",
+                "item_count": len(order.items),
+                "items": item_names[:5],
+                "order_date": (
+                    order.order_date.isoformat() if order.order_date else None
+                ),
+            }
+        )
+
+    return {
+        "status": "success",
+        "query": query.strip(),
+        "count": len(order_summaries),
+        "orders": order_summaries,
+    }

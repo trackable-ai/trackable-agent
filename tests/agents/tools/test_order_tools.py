@@ -297,3 +297,68 @@ class TestSearchOrderByNumber:
         result = search_order_by_number(user_id="user-123", order_number="FAKE-999")
 
         assert result["status"] == "not_found"
+
+
+class TestSearchOrders:
+    """Tests for search_orders tool."""
+
+    @patch("trackable.agents.tools.order_tools.UnitOfWork")
+    def test_returns_matching_orders(self, mock_uow_cls: MagicMock):
+        from trackable.agents.tools.order_tools import search_orders
+
+        orders = [
+            _make_order(
+                order_number="NKE-001",
+                merchant_name="Nike",
+                status=OrderStatus.DELIVERED,
+                total_amount="129.99",
+                items=[
+                    Item(
+                        id=str(uuid4()),
+                        order_id="x",
+                        name="Air Max 90",
+                        quantity=1,
+                        price=Money(amount="129.99"),
+                    )
+                ],
+            ),
+        ]
+
+        mock_uow = MagicMock()
+        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
+        mock_uow.__exit__ = MagicMock(return_value=False)
+        mock_uow.orders.search.return_value = orders
+        mock_uow_cls.return_value = mock_uow
+
+        result = search_orders(user_id="user-123", query="air max")
+
+        assert result["status"] == "success"
+        assert result["count"] == 1
+        assert result["orders"][0]["merchant"] == "Nike"
+        assert result["orders"][0]["items"] == ["Air Max 90"]
+        mock_uow.orders.search.assert_called_once_with("user-123", "air max", 10)
+
+    @patch("trackable.agents.tools.order_tools.UnitOfWork")
+    def test_returns_empty_when_no_match(self, mock_uow_cls: MagicMock):
+        from trackable.agents.tools.order_tools import search_orders
+
+        mock_uow = MagicMock()
+        mock_uow.__enter__ = MagicMock(return_value=mock_uow)
+        mock_uow.__exit__ = MagicMock(return_value=False)
+        mock_uow.orders.search.return_value = []
+        mock_uow_cls.return_value = mock_uow
+
+        result = search_orders(user_id="user-123", query="nonexistent")
+
+        assert result["status"] == "success"
+        assert result["count"] == 0
+        assert result["orders"] == []
+
+    @patch("trackable.agents.tools.order_tools.UnitOfWork")
+    def test_requires_query(self, mock_uow_cls: MagicMock):
+        from trackable.agents.tools.order_tools import search_orders
+
+        result = search_orders(user_id="user-123", query="")
+
+        assert result["status"] == "error"
+        assert "query" in result["message"].lower()
