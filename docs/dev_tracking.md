@@ -60,6 +60,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - `search_orders` - Fuzzy search orders by item name, merchant, or order number
     - User_id injection in chat API for tool context
     - `OrderRepository.search()` with JOIN + ILIKE across order numbers, merchant names, and item names (JSONB `jsonb_array_elements`)
+    - 6 integration tests for search (item name, merchant name, order number, case-insensitive, empty, user scoping)
     - 30 chatbot tool tests (unit + scenario)
 
 #### Ingress Service (API)
@@ -257,7 +258,6 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 - [ ] Query merchant return policies (requires PolicyRepository - not yet built)
 - [ ] Provide personalized recommendations (requires order history analysis)
-- [ ] Add integration test for full search_orders → DB flow (currently unit-tested with mocks)
 
 #### Ingress Service - Email Filtering
 
@@ -315,6 +315,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-02-01
 
+- ✅ Added integration tests for `OrderRepository.search()` — 6 tests covering item name, merchant name, order number, case-insensitivity, empty results, and user scoping
 - ✅ **Fuzzy Order Search** - Added `search_orders` tool and `OrderRepository.search()` for fuzzy matching
     - `search_orders` tool: fuzzy search by item name, merchant name, or order number
     - `OrderRepository.search()`: JOINs orders+merchants, ILIKE on order_number/merchant name/item names via `jsonb_array_elements`
