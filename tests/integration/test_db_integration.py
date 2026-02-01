@@ -244,12 +244,14 @@ class TestMerchantRepository:
         from trackable.db import UnitOfWork
         from trackable.models.order import Merchant
 
+        # Use a unique name so the alias won't collide with other merchants
         unique_suffix = uuid4().hex[:8]
-        domain = f"mystore-{unique_suffix}.com"
+        domain = f"uniquestore-{unique_suffix}.com"
+        unique_name = f"Unique Store {unique_suffix}"
 
         merchant = Merchant(
             id="",
-            name="My Store",
+            name=unique_name,
             domain=domain,
         )
 
@@ -257,12 +259,13 @@ class TestMerchantRepository:
             created = uow.merchants.upsert_by_domain(merchant)
             uow.commit()
 
-        # Aliases should include "mystore" (name without spaces)
-        assert "mystore" in created.aliases
+        # Alias should include the lowercased name without spaces
+        expected_alias = unique_name.lower().replace(" ", "")
+        assert expected_alias in created.aliases
 
         # Find by alias
         with UnitOfWork() as uow2:
-            found = uow2.merchants.get_by_name_or_domain(name="mystore")
+            found = uow2.merchants.get_by_name_or_domain(name=expected_alias)
             assert found is not None
             assert found.id == created.id
 
@@ -620,18 +623,91 @@ class TestOrderRepository:
             result, is_new = uow3.orders.upsert_by_order_number(updated_order)
             uow3.commit()
 
+        # New status creates a new row (order history preservation)
+        assert is_new is True
+        assert result.status == OrderStatus.SHIPPED
+
+        # Verify both rows exist (original DETECTED + new SHIPPED)
+        with UnitOfWork() as uow4:
+            history = uow4.orders.get_order_history(
+                user_id=test_user,
+                merchant_id=saved_merchant.id,
+                order_number=order_number,
+            )
+        assert len(history) == 2
+        statuses = [o.status for o in history]
+        assert OrderStatus.DETECTED in statuses
+        assert OrderStatus.SHIPPED in statuses
+
+    def test_upsert_same_status_merges(self, uow, test_user):
+        """Test upsert with same status merges into existing row."""
+        from trackable.db import UnitOfWork
+        from trackable.models.order import (
+            Item,
+            Merchant,
+            Money,
+            Order,
+            OrderStatus,
+            SourceType,
+        )
+
+        merchant = Merchant(
+            id=str(uuid4()),
+            name="Same Status Merge Store",
+            domain=f"same-status-{uuid4().hex[:8]}.com",
+        )
+
+        with uow:
+            saved_merchant = uow.merchants.create(merchant)
+            uow.commit()
+
+        now = datetime.now(timezone.utc)
+        order_number = f"MERGE-{uuid4().hex[:8]}"
+        original_order_id = str(uuid4())
+
+        original_order = Order(
+            id=original_order_id,
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.DETECTED,
+            source_type=SourceType.EMAIL,
+            confidence_score=0.70,
+            notes=["Original note"],
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow2:
+            uow2.orders.create(original_order)
+            uow2.commit()
+
+        # Upsert with same status but updated data
+        updated_order = Order(
+            id=str(uuid4()),
+            user_id=test_user,
+            merchant=saved_merchant,
+            order_number=order_number,
+            status=OrderStatus.DETECTED,  # Same status
+            source_type=SourceType.EMAIL,
+            confidence_score=0.90,
+            notes=["Updated note"],
+            created_at=now,
+            updated_at=now,
+        )
+
+        with UnitOfWork() as uow3:
+            result, is_new = uow3.orders.upsert_by_order_number(updated_order)
+            uow3.commit()
+
         assert is_new is False
-        assert result.id == original_order_id  # Same order ID preserved
-        assert result.status == OrderStatus.SHIPPED  # Status progressed
+        assert result.id == original_order_id  # Same row preserved
         assert result.confidence_score == 0.90  # Higher confidence used
-        assert len(result.items) == 1  # Items updated
-        assert result.items[0].name == "New Item"
-        # Notes should contain both old and new (deduplicated)
         assert "Original note" in result.notes
         assert "Updated note" in result.notes
 
-    def test_upsert_status_does_not_regress(self, uow, test_user):
-        """Test upsert does not regress order status."""
+    def test_upsert_different_status_creates_new_row(self, uow, test_user):
+        """Test upsert with different status creates a new row (order history)."""
         from trackable.db import UnitOfWork
         from trackable.models.order import (
             Merchant,
@@ -641,28 +717,25 @@ class TestOrderRepository:
             SourceType,
         )
 
-        # Create a merchant
         merchant = Merchant(
             id=str(uuid4()),
-            name="Status Regress Test Store",
-            domain=f"status-regress-{uuid4().hex[:8]}.com",
+            name="Status History Test Store",
+            domain=f"status-history-{uuid4().hex[:8]}.com",
         )
 
         with uow:
             saved_merchant = uow.merchants.create(merchant)
             uow.commit()
 
-        # Create order with SHIPPED status
         now = datetime.now(timezone.utc)
-        order_number = f"REG-{uuid4().hex[:8]}"
-        original_order_id = str(uuid4())
+        order_number = f"HIST-{uuid4().hex[:8]}"
 
         original_order = Order(
-            id=original_order_id,
+            id=str(uuid4()),
             user_id=test_user,
             merchant=saved_merchant,
             order_number=order_number,
-            status=OrderStatus.SHIPPED,  # Already shipped
+            status=OrderStatus.SHIPPED,
             source_type=SourceType.EMAIL,
             total=Money(amount=Decimal("50.00"), currency="USD"),
             created_at=now,
@@ -673,13 +746,13 @@ class TestOrderRepository:
             uow2.orders.create(original_order)
             uow2.commit()
 
-        # Try to upsert with DETECTED status (regression)
-        regressed_order = Order(
+        # Upsert with a different status (even "lower")
+        new_status_order = Order(
             id=str(uuid4()),
             user_id=test_user,
             merchant=saved_merchant,
             order_number=order_number,
-            status=OrderStatus.DETECTED,  # Lower status
+            status=OrderStatus.DETECTED,
             source_type=SourceType.EMAIL,
             total=Money(amount=Decimal("50.00"), currency="USD"),
             created_at=now,
@@ -687,11 +760,12 @@ class TestOrderRepository:
         )
 
         with UnitOfWork() as uow3:
-            result, is_new = uow3.orders.upsert_by_order_number(regressed_order)
+            result, is_new = uow3.orders.upsert_by_order_number(new_status_order)
             uow3.commit()
 
-        assert is_new is False
-        assert result.status == OrderStatus.SHIPPED  # Status NOT regressed
+        # Different status = new row
+        assert is_new is True
+        assert result.status == OrderStatus.DETECTED
 
 
 class TestFullWorkflow:

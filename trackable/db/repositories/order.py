@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, and_, func, or_, select, text
+from sqlalchemy import Table, and_, case, func, or_, select, text
 
 from trackable.db.repositories.base import (
     BaseRepository,
@@ -136,25 +136,54 @@ class OrderRepository(BaseRepository[Order]):
         status: OrderStatus | None = None,
         limit: int = 100,
         offset: int = 0,
+        include_history: bool = False,
     ) -> list[Order]:
         """
         Get orders for a user.
+
+        By default, deduplicates using DISTINCT ON to return only the latest
+        status per order. Set include_history=True to return all rows.
 
         Args:
             user_id: User ID
             status: Optional status filter
             limit: Maximum number of orders
             offset: Pagination offset
+            include_history: If True, return all status rows
 
         Returns:
             List of orders
         """
-        stmt = select(self.table).where(self.table.c.user_id == UUID(user_id))
-
-        if status:
-            stmt = stmt.where(self.table.c.status == status.value)
-
-        stmt = stmt.order_by(self.table.c.created_at.desc()).limit(limit).offset(offset)
+        if include_history:
+            stmt = select(self.table).where(self.table.c.user_id == UUID(user_id))
+            if status:
+                stmt = stmt.where(self.table.c.status == status.value)
+            stmt = (
+                stmt.order_by(self.table.c.created_at.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+        else:
+            status_order = self._status_order_expression()
+            stmt = (
+                select(self.table)
+                .distinct(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                )
+                .where(self.table.c.user_id == UUID(user_id))
+                .order_by(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                    status_order.desc(),
+                )
+            )
+            if status:
+                subq = stmt.subquery()
+                stmt = select(subq).where(subq.c.status == status.value)
+            stmt = stmt.limit(limit).offset(offset)
 
         result = self.session.execute(stmt)
         return [self._row_to_model(row) for row in result.fetchall()]
@@ -163,25 +192,57 @@ class OrderRepository(BaseRepository[Order]):
         self,
         user_id: str,
         status: OrderStatus | None = None,
+        include_history: bool = False,
     ) -> int:
         """
         Count orders for a user.
 
+        By default counts distinct orders (one per order_number+merchant).
+        Set include_history=True to count all status rows.
+
         Args:
             user_id: User ID
             status: Optional status filter
+            include_history: If True, count all status rows
 
         Returns:
             Number of orders
         """
-        stmt = (
-            select(func.count())
-            .select_from(self.table)
-            .where(self.table.c.user_id == UUID(user_id))
-        )
-
-        if status:
-            stmt = stmt.where(self.table.c.status == status.value)
+        if include_history:
+            stmt = (
+                select(func.count())
+                .select_from(self.table)
+                .where(self.table.c.user_id == UUID(user_id))
+            )
+            if status:
+                stmt = stmt.where(self.table.c.status == status.value)
+        else:
+            # Count distinct (user_id, merchant_id, order_number) combos
+            status_order = self._status_order_expression()
+            subq = (
+                select(self.table)
+                .distinct(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                )
+                .where(self.table.c.user_id == UUID(user_id))
+                .order_by(
+                    self.table.c.user_id,
+                    self.table.c.merchant_id,
+                    self.table.c.order_number,
+                    status_order.desc(),
+                )
+                .subquery()
+            )
+            if status:
+                stmt = (
+                    select(func.count())
+                    .select_from(subq)
+                    .where(subq.c.status == status.value)
+                )
+            else:
+                stmt = select(func.count()).select_from(subq)
 
         result = self.session.execute(stmt)
         return result.scalar() or 0
@@ -211,18 +272,27 @@ class OrderRepository(BaseRepository[Order]):
 
     def get_by_order_number(self, user_id: str, order_number: str) -> Order | None:
         """
-        Get order by merchant order number.
+        Get latest-status order by merchant order number.
+
+        With order history, multiple rows can share the same order_number.
+        This returns the row with the highest status in the progression.
 
         Args:
             user_id: User ID
             order_number: Merchant order number
 
         Returns:
-            Order or None
+            Order with the highest status, or None
         """
-        stmt = select(self.table).where(
-            self.table.c.user_id == UUID(user_id),
-            self.table.c.order_number == order_number,
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                self.table.c.user_id == UUID(user_id),
+                self.table.c.order_number == order_number,
+            )
+            .order_by(status_order.desc())
+            .limit(1)
         )
         result = self.session.execute(stmt)
         row = result.fetchone()
@@ -379,26 +449,33 @@ class OrderRepository(BaseRepository[Order]):
         )
 
     def get_by_unique_key(
-        self, user_id: str, merchant_id: str, order_number: str
+        self,
+        user_id: str,
+        merchant_id: str,
+        order_number: str,
+        status: OrderStatus | None = None,
     ) -> Order | None:
         """
-        Get order by unique key: user_id + merchant_id + order_number.
+        Get order by unique key: user_id + merchant_id + order_number + (optional) status.
 
         Args:
             user_id: User ID
             merchant_id: Merchant ID
             order_number: Merchant order number
+            status: Optional status for the composite unique key
 
         Returns:
             Order or None if not found
         """
-        stmt = select(self.table).where(
-            and_(
-                self.table.c.user_id == UUID(user_id),
-                self.table.c.merchant_id == UUID(merchant_id),
-                self.table.c.order_number == order_number,
-            )
-        )
+        conditions = [
+            self.table.c.user_id == UUID(user_id),
+            self.table.c.merchant_id == UUID(merchant_id),
+            self.table.c.order_number == order_number,
+        ]
+        if status is not None:
+            conditions.append(self.table.c.status == status.value)
+
+        stmt = select(self.table).where(and_(*conditions))
         result = self.session.execute(stmt)
         row = result.fetchone()
 
@@ -411,8 +488,11 @@ class OrderRepository(BaseRepository[Order]):
         """
         Merge incoming order data with existing order.
 
+        Under the new order history model, merge only happens between rows
+        with the same status (status is part of the unique key). Status is
+        never changed during merge.
+
         Merge strategy:
-        - Status: Only progress forward, never regress
         - Items: Replace with incoming if provided
         - Notes: Append new notes
         - Money fields: Use incoming if provided, else keep existing
@@ -430,20 +510,6 @@ class OrderRepository(BaseRepository[Order]):
         """
         now = datetime.now(timezone.utc)
         updates: dict[str, Any] = {"updated_at": now}
-
-        # Status progression - only move forward
-        existing_idx = (
-            ORDER_STATUS_PROGRESSION.index(existing.status)
-            if existing.status in ORDER_STATUS_PROGRESSION
-            else 0
-        )
-        incoming_idx = (
-            ORDER_STATUS_PROGRESSION.index(incoming.status)
-            if incoming.status in ORDER_STATUS_PROGRESSION
-            else 0
-        )
-        if incoming_idx > existing_idx:
-            updates["status"] = incoming.status.value
 
         # Order date - use incoming if existing is None
         if existing.order_date is None and incoming.order_date is not None:
@@ -523,11 +589,12 @@ class OrderRepository(BaseRepository[Order]):
 
     def upsert_by_order_number(self, order: Order) -> tuple[Order, bool]:
         """
-        Insert or update order by unique key (user_id + merchant_id + order_number).
+        Insert or update order by unique key (user_id + merchant_id + order_number + status).
 
-        If an order with the same order_number, merchant_id, and user_id exists,
-        the existing order is updated with merged data. Otherwise, a new order
-        is created.
+        If an order with the same order_number, merchant_id, user_id, and status
+        exists, the existing order is updated with merged data. Otherwise, a new
+        order row is created. This means a new status for the same order creates
+        a new row (preserving order history).
 
         Args:
             order: Order to upsert
@@ -535,11 +602,12 @@ class OrderRepository(BaseRepository[Order]):
         Returns:
             Tuple of (Order, is_new) where is_new is True if a new order was created
         """
-        # Check for existing order by unique key
+        # Check for existing order by unique key (now includes status)
         existing = self.get_by_unique_key(
             user_id=order.user_id,
             merchant_id=order.merchant.id,
             order_number=order.order_number,
+            status=order.status,
         )
 
         if existing is None:
@@ -560,3 +628,53 @@ class OrderRepository(BaseRepository[Order]):
 
         # No changes needed
         return existing, False
+
+    def _status_order_expression(self):
+        """Build a CASE expression that maps status to progression index."""
+        return case(
+            {s.value: i for i, s in enumerate(ORDER_STATUS_PROGRESSION)},
+            value=self.table.c.status,
+            else_=len(ORDER_STATUS_PROGRESSION),
+        )
+
+    def get_order_history(
+        self, user_id: str, merchant_id: str, order_number: str
+    ) -> list[Order]:
+        """Get all status rows for an order, ordered by status progression."""
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                and_(
+                    self.table.c.user_id == UUID(user_id),
+                    self.table.c.merchant_id == UUID(merchant_id),
+                    self.table.c.order_number == order_number,
+                )
+            )
+            .order_by(status_order.asc())
+        )
+        result = self.session.execute(stmt)
+        return [self._row_to_model(row) for row in result.fetchall()]
+
+    def get_latest_order(
+        self, user_id: str, merchant_id: str, order_number: str
+    ) -> Order | None:
+        """Get the highest-status row for an order."""
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                and_(
+                    self.table.c.user_id == UUID(user_id),
+                    self.table.c.merchant_id == UUID(merchant_id),
+                    self.table.c.order_number == order_number,
+                )
+            )
+            .order_by(status_order.desc())
+            .limit(1)
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+        if row is None:
+            return None
+        return self._row_to_model(row)

@@ -178,21 +178,38 @@ class TestListOrders:
             assert response.status_code == 503
             assert "Database not available" in response.json()["detail"]
 
-
-class TestGetOrder:
-    """Tests for GET /api/v1/orders/{order_id} endpoint."""
-
-    def test_get_order_success(
+    def test_list_orders_include_history(
         self, client: TestClient, sample_order: Order, mock_db_initialized
     ):
-        """Test getting a specific order."""
+        """Test listing orders with include_history=true passes param through."""
+        with patch("trackable.api.routes.orders.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_user.return_value = [sample_order]
+            mock_uow.orders.count_by_user.return_value = 1
+
+            response = client.get(
+                "/api/v1/orders?include_history=true", headers=TEST_HEADERS
+            )
+            assert response.status_code == 200
+            call_kwargs = mock_uow.orders.get_by_user.call_args.kwargs
+            assert call_kwargs["include_history"] is True
+
+
+class TestGetOrderLatest:
+    """Tests for GET /api/v1/orders/{order_id}/latest endpoint."""
+
+    def test_get_order_latest_success(
+        self, client: TestClient, sample_order: Order, mock_db_initialized
+    ):
+        """Test getting a specific order via /latest."""
         with patch("trackable.api.routes.orders.UnitOfWork") as mock_uow_class:
             mock_uow = MagicMock()
             mock_uow_class.return_value.__enter__.return_value = mock_uow
             mock_uow.orders.get_by_id_for_user.return_value = sample_order
 
             response = client.get(
-                f"/api/v1/orders/{sample_order.id}", headers=TEST_HEADERS
+                f"/api/v1/orders/{sample_order.id}/latest", headers=TEST_HEADERS
             )
 
             assert response.status_code == 200
@@ -202,18 +219,55 @@ class TestGetOrder:
             assert data["order_number"] == "TEST-12345"
             assert data["status"] == "delivered"
 
-    def test_get_order_not_found(self, client: TestClient, mock_db_initialized):
-        """Test getting an order that doesn't exist."""
+    def test_get_order_latest_not_found(self, client: TestClient, mock_db_initialized):
+        """Test getting an order that doesn't exist via /latest."""
         with patch("trackable.api.routes.orders.UnitOfWork") as mock_uow_class:
             mock_uow = MagicMock()
             mock_uow_class.return_value.__enter__.return_value = mock_uow
             mock_uow.orders.get_by_id_for_user.return_value = None
 
             fake_id = str(uuid4())
-            response = client.get(f"/api/v1/orders/{fake_id}", headers=TEST_HEADERS)
+            response = client.get(
+                f"/api/v1/orders/{fake_id}/latest", headers=TEST_HEADERS
+            )
 
             assert response.status_code == 404
             assert "Order not found" in response.json()["detail"]
+
+
+class TestGetOrderHistory:
+    """Tests for GET /api/v1/orders/{order_id}/history endpoint."""
+
+    def test_order_history_success(
+        self, client: TestClient, sample_order: Order, mock_db_initialized
+    ):
+        with patch("trackable.api.routes.orders.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = sample_order
+            mock_uow.orders.get_order_history.return_value = [sample_order]
+
+            response = client.get(
+                f"/api/v1/orders/{sample_order.id}/history", headers=TEST_HEADERS
+            )
+            assert response.status_code == 200
+            data = response.json()
+            assert "timeline" in data
+            assert len(data["timeline"]) == 1
+            assert data["order_number"] == sample_order.order_number
+            assert data["merchant_name"] == sample_order.merchant.name
+
+    def test_order_history_not_found(self, client: TestClient, mock_db_initialized):
+        with patch("trackable.api.routes.orders.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = None
+
+            fake_id = str(uuid4())
+            response = client.get(
+                f"/api/v1/orders/{fake_id}/history", headers=TEST_HEADERS
+            )
+            assert response.status_code == 404
 
 
 class TestUpdateOrder:

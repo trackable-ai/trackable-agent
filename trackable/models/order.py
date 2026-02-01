@@ -329,3 +329,25 @@ class OrderUpdateRequest(BaseModel):
     is_monitored: Optional[bool] = Field(
         default=None, description="Whether to monitor this order"
     )
+
+
+class OrderTimelineEntry(BaseModel):
+    """Individual status snapshot in order history timeline."""
+
+    id: str
+    status: OrderStatus
+    source_type: SourceType
+    source_id: str | None = None
+    confidence_score: float | None = None
+    notes: list[str] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+
+class OrderHistoryResponse(BaseModel):
+    """Response for order history timeline."""
+
+    order_number: str
+    merchant_name: str
+    user_id: str
+    timeline: list[OrderTimelineEntry]

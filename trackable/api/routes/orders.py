@@ -12,8 +12,10 @@ from trackable.api.auth import get_user_id
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import (
     Order,
+    OrderHistoryResponse,
     OrderListResponse,
     OrderStatus,
+    OrderTimelineEntry,
     OrderUpdateRequest,
 )
 
@@ -35,15 +37,22 @@ async def list_orders(
     status: str | None = Query(default=None, description="Filter by order status"),
     limit: int = Query(default=100, le=500, description="Maximum orders to return"),
     offset: int = Query(default=0, ge=0, description="Number of orders to skip"),
+    include_history: bool = Query(
+        default=False, description="If true, return all status rows per order"
+    ),
 ) -> OrderListResponse:
     """
     List user's orders with optional filtering and pagination.
+
+    By default, returns one row per order (the latest status). Set
+    include_history=true to return all status rows.
 
     Args:
         user_id: User ID from X-User-ID header
         status: Optional status filter (e.g., "delivered", "shipped")
         limit: Maximum number of orders to return (max 500)
         offset: Number of orders to skip for pagination
+        include_history: Return all status rows when true
 
     Returns:
         OrderListResponse with orders and pagination info
@@ -67,10 +76,15 @@ async def list_orders(
             status=order_status,
             limit=limit,
             offset=offset,
+            include_history=include_history,
         )
 
         # Get total count for pagination
-        total = uow.orders.count_by_user(user_id=user_id, status=order_status)
+        total = uow.orders.count_by_user(
+            user_id=user_id,
+            status=order_status,
+            include_history=include_history,
+        )
 
         return OrderListResponse(
             orders=orders,
@@ -80,13 +94,67 @@ async def list_orders(
         )
 
 
-@router.get("/orders/{order_id}", response_model=Order)
-async def get_order(
+@router.get("/orders/{order_id}/history", response_model=OrderHistoryResponse)
+async def get_order_history(
+    order_id: str,
+    user_id: str = Depends(get_user_id),
+) -> OrderHistoryResponse:
+    """
+    Get full order history timeline.
+
+    Returns all status transitions for the order, ordered by status
+    progression (earliest to latest).
+
+    Args:
+        order_id: Order UUID (any status row for this order)
+        user_id: User ID from X-User-ID header
+
+    Returns:
+        OrderHistoryResponse with timeline entries
+    """
+    _check_db_available()
+
+    with UnitOfWork() as uow:
+        order = uow.orders.get_by_id_for_user(order_id, user_id)
+        if order is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Order not found: {order_id}",
+            )
+
+        rows = uow.orders.get_order_history(
+            user_id=user_id,
+            merchant_id=order.merchant.id,
+            order_number=order.order_number,
+        )
+        timeline = [
+            OrderTimelineEntry(
+                id=row.id,
+                status=row.status,
+                source_type=row.source_type,
+                source_id=row.source_id,
+                confidence_score=row.confidence_score,
+                notes=row.notes,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+            for row in rows
+        ]
+        return OrderHistoryResponse(
+            order_number=order.order_number,
+            merchant_name=order.merchant.name,
+            user_id=user_id,
+            timeline=timeline,
+        )
+
+
+@router.get("/orders/{order_id}/latest", response_model=Order)
+async def get_order_latest(
     order_id: str,
     user_id: str = Depends(get_user_id),
 ) -> Order:
     """
-    Get order details by ID.
+    Get latest order details by ID.
 
     Args:
         order_id: Order UUID
@@ -94,10 +162,6 @@ async def get_order(
 
     Returns:
         Order details
-
-    Raises:
-        404: Order not found
-        403: Order belongs to another user
     """
     _check_db_available()
 
