@@ -50,7 +50,15 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Vision-capable (gemini-2.5-flash)
     - Comprehensive tests (9 passing tests)
 - [x] **Chatbot Agent** (`trackable/agents/chatbot.py`)
-    - Vanilla chat agent using Google ADK
+    - Google ADK agent with database-backed tools
+    - 5 custom tools for order/merchant queries (`trackable/agents/tools/`)
+    - `get_user_orders` - List/filter orders by status
+    - `get_order_details` - Full order detail with items, shipments, pricing
+    - `check_return_windows` - Find orders with expiring return deadlines
+    - `get_merchant_info` - Merchant support info and return portal lookup
+    - `search_order_by_number` - Find order by merchant order number
+    - User_id injection in chat API for tool context
+    - 23 chatbot tool tests (unit + scenario)
 
 #### Ingress Service (API)
 
@@ -243,15 +251,10 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] `trackable/api/routes/chat.py` - Remove `user_id` parameter
 - [ ] User registration/login flow (if self-hosted auth)
 
-#### Chatbot Enhancement
+#### Chatbot Enhancement (Partial)
 
-- [ ] Extend chatbot agent (`trackable/agents/chatbot.py`)
-    - Query and explore user orders
-    - Check order status and delivery information
-    - Calculate return/exchange time windows
-    - Query merchant return policies
-    - Answer questions about specific orders
-    - Provide personalized recommendations
+- [ ] Query merchant return policies (requires PolicyRepository - not yet built)
+- [ ] Provide personalized recommendations (requires order history analysis)
 
 #### Ingress Service - Email Filtering
 
@@ -309,6 +312,19 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 ### 2026-02-01
 
+- ✅ **Chatbot Enhancement** - Added database-backed tools to chatbot agent (`trackable/agents/chatbot.py`, `trackable/agents/tools/`)
+    - Created `trackable/agents/tools/` package with 5 tool functions:
+        - `get_user_orders` - List/filter user orders by status with pagination
+        - `get_order_details` - Full order detail with items, shipments, pricing, return windows
+        - `check_return_windows` - Find orders with expiring return deadlines, calculates days remaining
+        - `get_merchant_info` - Look up merchant support info and return portal URLs
+        - `search_order_by_number` - Find order by merchant-assigned order number
+    - Tools use `UnitOfWork` pattern for database queries (read-only)
+    - Google ADK auto-wraps plain Python functions as `FunctionTool` objects
+    - Updated chatbot agent instructions with tool usage guidance
+    - Injected `user_id` context into chat prompts for tool parameter passing
+    - 23 new tests: 16 tool unit tests, 3 scenario tests, 2 wiring tests, 2 user_id injection tests
+    - Total: 166 passing tests (+ 1 pre-existing integration failure)
 - 📝 Added TODO: Order history preservation — extend unique constraint from `(user_id, merchant_id, order_number)` to `(user_id, merchant_id, order_number, status)` so each status transition creates a new row instead of overwriting
 - 📝 Added TODO: New order query APIs — `GET /orders/{order_number}/history` (timeline), `GET /orders/{order_number}/latest` (current status), updated list endpoint with deduplication
 - 📝 Added TODO: Order history repository methods and response models
