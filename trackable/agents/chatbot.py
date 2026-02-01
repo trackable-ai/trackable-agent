@@ -14,6 +14,7 @@ from trackable.agents.tools import (
     get_order_details,
     get_user_orders,
     search_order_by_number,
+    search_orders,
 )
 
 chatbot_agent = Agent(
@@ -31,6 +32,7 @@ You have access to the user's order database and can:
 - Get full details for any order including items, shipments, and pricing (use get_order_details)
 - Check which orders have return windows expiring soon (use check_return_windows)
 - Look up merchant contact info and return portals (use get_merchant_info)
+- Search for orders by product name, brand, or merchant (use search_orders)
 - Search the web for general shopping questions (use google_search)
 
 ## How to use tools
@@ -49,10 +51,10 @@ When a user mentions an order number (e.g., "ORD-12345"):
 
 When a user describes an order by product name, merchant, or recency (e.g., "my MacBook Air
 order", "the Nike shoes I bought last week", "my most recent Amazon order"):
-1. Use get_user_orders to retrieve their orders — the results include item names and order dates
-2. Scan the returned item names and merchant names to find the best match
-3. Use get_order_details on the matching order to provide full details
-4. If multiple orders could match, list them and ask the user to clarify
+1. Use search_orders with the key terms (e.g., query="MacBook Air" or query="Nike shoes")
+2. If search_orders returns results, use get_order_details on the best match for full details
+3. If multiple results match, list them and ask the user to clarify
+4. If no results, fall back to get_user_orders and scan manually
 
 When discussing returns or exchanges:
 1. Use check_return_windows to find upcoming deadlines
@@ -74,6 +76,7 @@ When discussing returns or exchanges:
         get_user_orders,
         get_order_details,
         search_order_by_number,
+        search_orders,
         check_return_windows,
         get_merchant_info,
     ],

@@ -17,6 +17,7 @@ def test_chatbot_has_order_tools():
     assert "check_return_windows" in tool_names
     assert "get_merchant_info" in tool_names
     assert "search_order_by_number" in tool_names
+    assert "search_orders" in tool_names
 
 
 def test_chatbot_retains_google_search():
