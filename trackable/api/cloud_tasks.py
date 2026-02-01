@@ -57,6 +57,18 @@ def create_parse_email_task(
         email_content=email_content,
     )
 
+    logger.info(
+        "Create parse email task",
+        extra={
+            "json_fields": {
+                "job_id": job_id,
+                "user_id": user_id,
+                "source_id": source_id,
+                "email_content": email_content,
+            }
+        },
+    )
+
     return _create_task(
         endpoint="/tasks/parse-email",
         payload=payload.model_dump(),
@@ -249,11 +261,8 @@ def _create_task(
         oidc_token=oidc_token,
     )
 
-    # Build the task
-    task = tasks_v2.Task(
-        name=f"{queue_path}/tasks/{task_id}",
-        http_request=http_request,
-    )
+    # Build the task; let the API construct the full name from task_id
+    task = tasks_v2.Task(http_request=http_request)
 
     # Add delay if specified
     if delay_seconds > 0:
@@ -264,7 +273,11 @@ def _create_task(
     # Create the task
     try:
         response = client.create_task(
-            request=tasks_v2.CreateTaskRequest(parent=queue_path, task=task)
+            request=tasks_v2.CreateTaskRequest(
+                parent=queue_path,
+                task=task,
+                task_id=task_id,  # explicit ID for easier tracing / de-duplication
+            )
         )
     except Exception:
         logger.exception(
