@@ -10,8 +10,13 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
+from trackable.utils.logging import setup_logging
+
 # Load environment variables
 load_dotenv()
+
+# Configure logging early
+setup_logging("trackable-worker")
 
 
 def _init_database():

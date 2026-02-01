@@ -28,7 +28,7 @@ from trackable.models.chat import (
     MessageRole,
 )
 
-logger = logging.getLogger("uvicorn.error")
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 

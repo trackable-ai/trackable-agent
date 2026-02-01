@@ -11,8 +11,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from trackable.utils.logging import setup_logging
+
 # Load environment variables
 load_dotenv()
+
+# Configure logging early
+setup_logging("trackable-ingress")
 
 
 def _init_database():
