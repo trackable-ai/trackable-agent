@@ -241,12 +241,14 @@ class TestMerchantRepository:
         from trackable.db import UnitOfWork
         from trackable.models.order import Merchant
 
+        # Use a unique name so the alias won't collide with other merchants
         unique_suffix = uuid4().hex[:8]
-        domain = f"mystore-{unique_suffix}.com"
+        domain = f"uniquestore-{unique_suffix}.com"
+        unique_name = f"Unique Store {unique_suffix}"
 
         merchant = Merchant(
             id="",
-            name="My Store",
+            name=unique_name,
             domain=domain,
         )
 
@@ -254,12 +256,13 @@ class TestMerchantRepository:
             created = uow.merchants.upsert_by_domain(merchant)
             uow.commit()
 
-        # Aliases should include "mystore" (name without spaces)
-        assert "mystore" in created.aliases
+        # Alias should include the lowercased name without spaces
+        expected_alias = unique_name.lower().replace(" ", "")
+        assert expected_alias in created.aliases
 
         # Find by alias
         with UnitOfWork() as uow2:
-            found = uow2.merchants.get_by_name_or_domain(name="mystore")
+            found = uow2.merchants.get_by_name_or_domain(name=expected_alias)
             assert found is not None
             assert found.id == created.id
 
