@@ -6,12 +6,30 @@ In Cloud Run, logs are automatically collected from stdout/stderr
 when formatted as structured JSON.
 """
 
+import json
 import logging
 import os
 import sys
 
 # Flag to track if logging is already configured
 _logging_configured = False
+
+
+class LocalFormatter(logging.Formatter):
+    """Custom formatter that displays json_fields from extra dict."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        # Get base formatted message
+        message = super().format(record)
+
+        # Check for json_fields in extra
+        json_fields = getattr(record, "json_fields", None)
+        if json_fields:
+            # Append JSON fields to the message
+            fields_str = json.dumps(json_fields, indent=2, default=str)
+            message = f"{message}\n{fields_str}"
+
+        return message
 
 
 def setup_logging(service_name: str = "trackable"):
@@ -30,7 +48,7 @@ def setup_logging(service_name: str = "trackable"):
         return
 
     # Determine if running in GCP
-    is_gcp = bool(os.getenv("K_SERVICE") or os.getenv("GOOGLE_CLOUD_PROJECT"))
+    is_gcp = bool(os.getenv("K_SERVICE"))
 
     if is_gcp:
         _setup_cloud_logging(service_name)
@@ -58,8 +76,13 @@ def _setup_cloud_logging(service_name: str):
 
 def _setup_local_logging():
     """Configure logging for local development."""
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        stream=sys.stdout,
+    # Create handler with custom formatter
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(
+        LocalFormatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
+
+    # Configure root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(handler)
