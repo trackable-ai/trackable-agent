@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, and_, func, select
+from sqlalchemy import Table, and_, case, func, select
 
 from trackable.db.repositories.base import (
     BaseRepository,
@@ -508,3 +508,53 @@ class OrderRepository(BaseRepository[Order]):
 
         # No changes needed
         return existing, False
+
+    def _status_order_expression(self):
+        """Build a CASE expression that maps status to progression index."""
+        return case(
+            {s.value: i for i, s in enumerate(ORDER_STATUS_PROGRESSION)},
+            value=self.table.c.status,
+            else_=len(ORDER_STATUS_PROGRESSION),
+        )
+
+    def get_order_history(
+        self, user_id: str, merchant_id: str, order_number: str
+    ) -> list[Order]:
+        """Get all status rows for an order, ordered by status progression."""
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                and_(
+                    self.table.c.user_id == UUID(user_id),
+                    self.table.c.merchant_id == UUID(merchant_id),
+                    self.table.c.order_number == order_number,
+                )
+            )
+            .order_by(status_order.asc())
+        )
+        result = self.session.execute(stmt)
+        return [self._row_to_model(row) for row in result.fetchall()]
+
+    def get_latest_order(
+        self, user_id: str, merchant_id: str, order_number: str
+    ) -> Order | None:
+        """Get the highest-status row for an order."""
+        status_order = self._status_order_expression()
+        stmt = (
+            select(self.table)
+            .where(
+                and_(
+                    self.table.c.user_id == UUID(user_id),
+                    self.table.c.merchant_id == UUID(merchant_id),
+                    self.table.c.order_number == order_number,
+                )
+            )
+            .order_by(status_order.desc())
+            .limit(1)
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+        if row is None:
+            return None
+        return self._row_to_model(row)

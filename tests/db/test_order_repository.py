@@ -582,3 +582,76 @@ class TestUpsertNewSemantics:
 
         assert is_new is True
         mock_create.assert_called_once_with(incoming)
+
+
+def _make_mock_row(**overrides) -> MagicMock:
+    """Create a mock row with default order fields."""
+    mock = MagicMock()
+    defaults = {
+        "id": uuid4(),
+        "user_id": uuid4(),
+        "merchant_id": uuid4(),
+        "order_number": "ORD-001",
+        "order_date": datetime.now(timezone.utc),
+        "status": "detected",
+        "country_code": "US",
+        "items": [],
+        "subtotal": None,
+        "tax": None,
+        "shipping_cost": None,
+        "total": None,
+        "return_window_start": None,
+        "return_window_end": None,
+        "return_window_days": None,
+        "exchange_window_end": None,
+        "is_monitored": True,
+        "source_type": "email",
+        "source_id": None,
+        "confidence_score": None,
+        "needs_clarification": False,
+        "clarification_questions": [],
+        "order_url": None,
+        "receipt_url": None,
+        "refund_initiated": False,
+        "refund_amount": None,
+        "refund_completed_at": None,
+        "notes": [],
+        "last_agent_intervention": None,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+    }
+    defaults.update(overrides)
+    for k, v in defaults.items():
+        setattr(mock, k, v)
+    mock._mapping = defaults
+    return mock
+
+
+class TestGetOrderHistory:
+    def test_returns_list(self, order_repo: OrderRepository):
+        mock_rows = [
+            _make_mock_row(status="detected"),
+            _make_mock_row(status="shipped"),
+        ]
+        order_repo.session.execute.return_value.fetchall.return_value = mock_rows
+        result = order_repo.get_order_history(str(uuid4()), str(uuid4()), "ORD-001")
+        assert len(result) == 2
+
+    def test_empty_history(self, order_repo: OrderRepository):
+        order_repo.session.execute.return_value.fetchall.return_value = []
+        result = order_repo.get_order_history(str(uuid4()), str(uuid4()), "ORD-001")
+        assert result == []
+
+
+class TestGetLatestOrder:
+    def test_returns_order(self, order_repo: OrderRepository):
+        order_repo.session.execute.return_value.fetchone.return_value = _make_mock_row(
+            status="delivered"
+        )
+        result = order_repo.get_latest_order(str(uuid4()), str(uuid4()), "ORD-001")
+        assert result is not None
+
+    def test_not_found(self, order_repo: OrderRepository):
+        order_repo.session.execute.return_value.fetchone.return_value = None
+        result = order_repo.get_latest_order(str(uuid4()), str(uuid4()), "ORD-001")
+        assert result is None
