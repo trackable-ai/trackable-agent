@@ -59,6 +59,74 @@ def mock_db_initialized():
         yield mock_db
 
 
+class TestListShipments:
+    """Tests for GET /api/v1/orders/{order_id}/shipments endpoint."""
+
+    def test_list_shipments_success(
+        self,
+        client: TestClient,
+        sample_shipment: Shipment,
+        sample_order_id: str,
+        mock_db_initialized,
+    ):
+        """Test listing shipments for an order."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            mock_uow.shipments.get_by_order.return_value = [sample_shipment]
+
+            response = client.get(
+                f"/api/v1/orders/{sample_order_id}/shipments",
+                headers=TEST_HEADERS,
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 1
+            assert data[0]["id"] == sample_shipment.id
+
+    def test_list_shipments_empty(
+        self, client: TestClient, sample_order_id: str, mock_db_initialized
+    ):
+        """Test listing shipments when order has none."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = MagicMock(
+                id=sample_order_id
+            )
+            mock_uow.shipments.get_by_order.return_value = []
+
+            response = client.get(
+                f"/api/v1/orders/{sample_order_id}/shipments",
+                headers=TEST_HEADERS,
+            )
+
+            assert response.status_code == 200
+            assert response.json() == []
+
+    def test_list_shipments_order_not_found(
+        self, client: TestClient, mock_db_initialized
+    ):
+        """Test listing shipments when order doesn't exist."""
+        with patch("trackable.api.routes.shipments.UnitOfWork") as mock_uow_class:
+            mock_uow = MagicMock()
+            mock_uow_class.return_value.__enter__.return_value = mock_uow
+            mock_uow.orders.get_by_id_for_user.return_value = None
+
+            fake_order_id = str(uuid4())
+            response = client.get(
+                f"/api/v1/orders/{fake_order_id}/shipments",
+                headers=TEST_HEADERS,
+            )
+
+            assert response.status_code == 404
+            assert "Order not found" in response.json()["detail"]
+
+
 class TestGetShipment:
     """Tests for GET /api/v1/orders/{order_id}/shipments/{shipment_id} endpoint."""
 

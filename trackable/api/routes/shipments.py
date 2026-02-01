@@ -31,6 +31,38 @@ def _check_db_available():
         )
 
 
+@router.get("/orders/{order_id}/shipments", response_model=list[Shipment])
+async def list_shipments(
+    order_id: str,
+    user_id: str = Depends(get_user_id),
+) -> list[Shipment]:
+    """
+    List all shipments for an order.
+
+    Args:
+        order_id: Parent order UUID
+        user_id: User ID from X-User-ID header
+
+    Returns:
+        List of shipments
+
+    Raises:
+        404: Order not found
+    """
+    _check_db_available()
+
+    with UnitOfWork() as uow:
+        # Verify order exists and belongs to user
+        order = uow.orders.get_by_id_for_user(order_id, user_id)
+        if order is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Order not found: {order_id}",
+            )
+
+        return uow.shipments.get_by_order(order_id)
+
+
 @router.get("/orders/{order_id}/shipments/{shipment_id}", response_model=Shipment)
 async def get_shipment(
     order_id: str,
