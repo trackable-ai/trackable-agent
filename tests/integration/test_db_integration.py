@@ -14,6 +14,9 @@ import pytest
 from dotenv import load_dotenv
 from sqlalchemy import text
 
+from trackable.db import UnitOfWork
+from trackable.models.order import Item, Merchant, Money, Order, OrderStatus, SourceType
+
 # Load environment variables from .env
 load_dotenv()
 
@@ -760,3 +763,131 @@ class TestFullWorkflow:
             assert final_source.processed is True
 
         print(f"Workflow test passed: job_id={job_id}")
+
+
+class TestOrderSearch:
+    """Integration tests for OrderRepository.search()."""
+
+    def _create_merchant(self, name: str) -> Merchant:
+        """Create and persist a merchant, returning the saved instance."""
+        merchant = Merchant(
+            id=str(uuid4()),
+            name=name,
+            domain=f"{name.lower().replace(' ', '-')}-{uuid4().hex[:8]}.com",
+        )
+        with UnitOfWork() as uow:
+            saved = uow.merchants.create(merchant)
+            uow.commit()
+        return saved
+
+    def _create_order(
+        self,
+        user_id: str,
+        merchant: Merchant,
+        order_number: str,
+        item_names: list[str],
+        status: OrderStatus = OrderStatus.CONFIRMED,
+    ) -> Order:
+        """Create and persist an order with named items."""
+        order_id = str(uuid4())
+        now = datetime.now(timezone.utc)
+        items = [
+            Item(
+                id=str(uuid4()),
+                order_id=order_id,
+                name=name,
+                quantity=1,
+                price=Money(amount="29.99"),
+            )
+            for name in item_names
+        ]
+        order = Order(
+            id=order_id,
+            user_id=user_id,
+            merchant=merchant,
+            order_number=order_number,
+            order_date=now,
+            status=status,
+            items=items,
+            total=Money(amount="29.99"),
+            source_type=SourceType.EMAIL,
+            created_at=now,
+            updated_at=now,
+        )
+        with UnitOfWork() as uow:
+            created = uow.orders.create(order)
+            uow.commit()
+        return created
+
+    def test_search_by_item_name(self, db_connection, test_user: str):
+        """Search finds orders by partial item name match."""
+        merchant = self._create_merchant("Generic Store")
+        tag = uuid4().hex[:8]
+        self._create_order(
+            test_user,
+            merchant,
+            f"ORD-{tag}",
+            [f"MacBook Air M3 {tag}"],
+        )
+
+        with UnitOfWork() as uow:
+            results = uow.orders.search(test_user, f"MacBook Air M3 {tag}")
+
+        assert len(results) == 1
+        assert results[0].items[0].name == f"MacBook Air M3 {tag}"
+        assert results[0].merchant.name == "Generic Store"
+
+    def test_search_by_merchant_name(self, db_connection, test_user: str):
+        """Search finds orders by merchant name."""
+        tag = uuid4().hex[:8]
+        merchant = self._create_merchant(f"UniqueShop {tag}")
+        self._create_order(test_user, merchant, f"ORD-{tag}", ["Some Item"])
+
+        with UnitOfWork() as uow:
+            results = uow.orders.search(test_user, f"UniqueShop {tag}")
+
+        assert len(results) == 1
+        assert results[0].merchant.name == f"UniqueShop {tag}"
+
+    def test_search_by_order_number(self, db_connection, test_user: str):
+        """Search finds orders by partial order number match."""
+        merchant = self._create_merchant("Any Store")
+        tag = uuid4().hex[:8]
+        self._create_order(test_user, merchant, f"XORD-{tag}", ["Widget"])
+
+        with UnitOfWork() as uow:
+            results = uow.orders.search(test_user, f"XORD-{tag}")
+
+        assert len(results) == 1
+        assert results[0].order_number == f"XORD-{tag}"
+
+    def test_search_is_case_insensitive(self, db_connection, test_user: str):
+        """Search matches regardless of case."""
+        merchant = self._create_merchant("Case Store")
+        tag = uuid4().hex[:8]
+        self._create_order(test_user, merchant, f"ORD-{tag}", [f"iPhone 16 Pro {tag}"])
+
+        with UnitOfWork() as uow:
+            results = uow.orders.search(test_user, f"iphone 16 pro {tag}")
+
+        assert len(results) == 1
+        assert f"iPhone 16 Pro {tag}" in results[0].items[0].name
+
+    def test_search_returns_empty_on_no_match(self, db_connection, test_user: str):
+        """Search returns empty list when nothing matches."""
+        with UnitOfWork() as uow:
+            results = uow.orders.search(test_user, f"zzznonexistent-{uuid4().hex}")
+
+        assert results == []
+
+    def test_search_scoped_to_user(self, db_connection, test_user: str):
+        """Search only returns orders belonging to the querying user."""
+        merchant = self._create_merchant("Scoped Store")
+        tag = uuid4().hex[:8]
+        self._create_order(test_user, merchant, f"ORD-{tag}", [f"Scoped Item {tag}"])
+
+        fake_user_id = str(uuid4())
+        with UnitOfWork() as uow:
+            results = uow.orders.search(fake_user_id, f"Scoped Item {tag}")
+
+        assert results == []
