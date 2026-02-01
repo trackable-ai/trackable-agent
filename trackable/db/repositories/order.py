@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Table, and_, func, select
+from sqlalchemy import Table, and_, func, or_, select, text
 
 from trackable.db.repositories.base import (
     BaseRepository,
@@ -17,7 +17,7 @@ from trackable.db.repositories.base import (
     model_to_jsonb,
     models_to_jsonb,
 )
-from trackable.db.tables import orders
+from trackable.db.tables import merchants, orders
 from trackable.models.order import (
     Item,
     Merchant,
@@ -231,6 +231,56 @@ class OrderRepository(BaseRepository[Order]):
             return None
 
         return self._row_to_model(row)
+
+    def search(self, user_id: str, query: str, limit: int = 20) -> list[Order]:
+        """
+        Search orders by partial match on order number, merchant name, or item name.
+
+        Uses case-insensitive partial matching (ILIKE) across:
+        - Order number
+        - Merchant name (via JOIN)
+        - Item names (via JSONB array extraction)
+
+        Args:
+            user_id: User ID (authorization scope)
+            query: Search string
+            limit: Maximum results (default 20)
+
+        Returns:
+            List of matching orders with merchant name populated.
+        """
+        pattern = f"%{query}%"
+
+        stmt = (
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .join(merchants, self.table.c.merchant_id == merchants.c.id)
+            .where(self.table.c.user_id == UUID(user_id))
+            .where(
+                or_(
+                    self.table.c.order_number.ilike(pattern),
+                    merchants.c.name.ilike(pattern),
+                    text(
+                        "EXISTS (SELECT 1 FROM jsonb_array_elements(orders.items) elem "
+                        "WHERE elem->>'name' ILIKE :item_pattern)"
+                    ),
+                )
+            )
+            .order_by(self.table.c.created_at.desc())
+            .limit(limit)
+        )
+
+        result = self.session.execute(stmt, {"item_pattern": pattern})
+        results = []
+        for row in result.fetchall():
+            order = self._row_to_model(row)
+            order.merchant.name = row.merchant_name
+            order.merchant.domain = row.merchant_domain
+            results.append(order)
+        return results
 
     def get_monitored_orders(self, user_id: str | None = None) -> list[Order]:
         """
