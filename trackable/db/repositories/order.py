@@ -329,26 +329,33 @@ class OrderRepository(BaseRepository[Order]):
         )
 
     def get_by_unique_key(
-        self, user_id: str, merchant_id: str, order_number: str
+        self,
+        user_id: str,
+        merchant_id: str,
+        order_number: str,
+        status: OrderStatus | None = None,
     ) -> Order | None:
         """
-        Get order by unique key: user_id + merchant_id + order_number.
+        Get order by unique key: user_id + merchant_id + order_number + (optional) status.
 
         Args:
             user_id: User ID
             merchant_id: Merchant ID
             order_number: Merchant order number
+            status: Optional status for the composite unique key
 
         Returns:
             Order or None if not found
         """
-        stmt = select(self.table).where(
-            and_(
-                self.table.c.user_id == UUID(user_id),
-                self.table.c.merchant_id == UUID(merchant_id),
-                self.table.c.order_number == order_number,
-            )
-        )
+        conditions = [
+            self.table.c.user_id == UUID(user_id),
+            self.table.c.merchant_id == UUID(merchant_id),
+            self.table.c.order_number == order_number,
+        ]
+        if status is not None:
+            conditions.append(self.table.c.status == status.value)
+
+        stmt = select(self.table).where(and_(*conditions))
         result = self.session.execute(stmt)
         row = result.fetchone()
 

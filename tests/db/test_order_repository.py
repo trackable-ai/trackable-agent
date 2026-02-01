@@ -538,3 +538,46 @@ class TestMergeOrders:
         updates = order_repo._merge_orders(existing, incoming)
 
         assert "updated_at" in updates
+
+
+class TestGetByUniqueKey:
+    """Tests for get_by_unique_key with optional status."""
+
+    def test_get_by_unique_key_with_status_includes_status_filter(
+        self,
+        order_repo: OrderRepository,
+        sample_order: Order,
+    ):
+        """Verify status is included in the WHERE clause when provided."""
+        order_repo.session.execute.return_value.fetchone.return_value = None
+
+        order_repo.get_by_unique_key(
+            user_id=sample_order.user_id,
+            merchant_id=sample_order.merchant.id,
+            order_number=sample_order.order_number,
+            status=OrderStatus.CONFIRMED,
+        )
+
+        call_args = order_repo.session.execute.call_args
+        compiled = str(call_args[0][0].compile(compile_kwargs={"literal_binds": True}))
+        assert "status" in compiled.lower()
+
+    def test_get_by_unique_key_without_status_omits_status_filter(
+        self,
+        order_repo: OrderRepository,
+        sample_order: Order,
+    ):
+        """Verify status is NOT in WHERE clause when omitted."""
+        order_repo.session.execute.return_value.fetchone.return_value = None
+
+        order_repo.get_by_unique_key(
+            user_id=sample_order.user_id,
+            merchant_id=sample_order.merchant.id,
+            order_number=sample_order.order_number,
+        )
+
+        call_args = order_repo.session.execute.call_args
+        compiled = str(call_args[0][0].compile(compile_kwargs={"literal_binds": True}))
+        assert "order_number" in compiled.lower()
+
+
