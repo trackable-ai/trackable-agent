@@ -8,6 +8,7 @@ import os
 from functools import lru_cache
 
 import google.auth
+import requests
 
 # Configuration from environment
 LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
@@ -29,6 +30,19 @@ def get_credentials_info() -> tuple[str, str]:
 
         if hasattr(credentials, "service_account_email"):
             service_account = credentials.service_account_email
+
+        # On Cloud Run/GCE, service_account_email is "default" - fetch actual email
+        if service_account == "default":
+            try:
+                resp = requests.get(
+                    "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email",
+                    headers={"Metadata-Flavor": "Google"},
+                    timeout=2,
+                )
+                if resp.ok:
+                    service_account = resp.text
+            except requests.RequestException:
+                service_account = ""  # Fall back to empty if metadata unavailable
 
         # Get project number from the resource manager API
         if project:
