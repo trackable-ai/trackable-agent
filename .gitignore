@@ -12,3 +12,6 @@ wheels/
 # ADK Environment Variables
 .env
 .adk/
+
+# Git worktrees
+.worktrees/
