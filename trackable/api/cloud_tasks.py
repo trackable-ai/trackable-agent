@@ -217,12 +217,14 @@ def _create_task(
     logger.info(
         "Creating Cloud Task",
         extra={
-            "task_id": task_id,
-            "endpoint": endpoint,
-            "queue_path": queue_path,
-            "worker_url": worker_url,
-            "payload_size": payload_size,
-            "delay_seconds": delay_seconds,
+            "json_fields": {
+                "task_id": task_id,
+                "endpoint": endpoint,
+                "queue_path": queue_path,
+                "worker_url": worker_url,
+                "payload_size": payload_size,
+                "delay_seconds": delay_seconds,
+            }
         },
     )
 
@@ -265,12 +267,14 @@ def _create_task(
         logger.exception(
             "Cloud Tasks create_task failed",
             extra={
-                "task_id": task_id,
-                "endpoint": endpoint,
-                "queue_path": queue_path,
-                "worker_url": worker_url,
-                "payload_size": payload_size,
-                "delay_seconds": delay_seconds,
+                "json_fields": {
+                    "task_id": task_id,
+                    "endpoint": endpoint,
+                    "queue_path": queue_path,
+                    "worker_url": worker_url,
+                    "payload_size": payload_size,
+                    "delay_seconds": delay_seconds,
+                }
             },
         )
         raise
