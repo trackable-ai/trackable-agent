@@ -351,3 +351,51 @@ class OrderHistoryResponse(BaseModel):
     merchant_name: str
     user_id: str
     timeline: list[OrderTimelineEntry]
+
+
+class ShipmentCreateRequest(BaseModel):
+    """Request body for creating a shipment."""
+
+    tracking_number: Optional[str] = Field(
+        default=None, description="Carrier tracking number"
+    )
+    carrier: Carrier = Field(default=Carrier.UNKNOWN, description="Shipping carrier")
+    status: ShipmentStatus = Field(
+        default=ShipmentStatus.PENDING, description="Initial shipment status"
+    )
+    shipping_address: Optional[str] = Field(
+        default=None, description="Shipping address"
+    )
+    return_address: Optional[str] = Field(default=None, description="Return address")
+    estimated_delivery: Optional[datetime] = Field(
+        default=None, description="Estimated delivery date"
+    )
+
+
+class ShipmentUpdateRequest(BaseModel):
+    """Request body for updating a shipment."""
+
+    status: Optional[ShipmentStatus] = Field(
+        default=None, description="New shipment status"
+    )
+    tracking_number: Optional[str] = Field(
+        default=None, description="Carrier tracking number"
+    )
+    carrier: Optional[Carrier] = Field(default=None, description="Shipping carrier")
+    estimated_delivery: Optional[datetime] = Field(
+        default=None, description="Estimated delivery date"
+    )
+    delivered_at: Optional[datetime] = Field(
+        default=None, description="Actual delivery date"
+    )
+
+
+class TrackingEventRequest(BaseModel):
+    """Request body for adding a tracking event."""
+
+    status: ShipmentStatus = Field(description="Event status")
+    location: Optional[str] = Field(default=None, description="Event location")
+    description: Optional[str] = Field(default=None, description="Event description")
+    timestamp: Optional[datetime] = Field(
+        default=None, description="Event timestamp (defaults to now)"
+    )
