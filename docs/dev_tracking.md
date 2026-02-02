@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-02-01
+**Last Updated**: 2026-02-02
 
 ## Overview
 
@@ -62,6 +62,10 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - `OrderRepository.search()` with JOIN + ILIKE across order numbers, merchant names, and item names (JSONB `jsonb_array_elements`)
     - 6 integration tests for search (item name, merchant name, order number, case-insensitive, empty, user scoping)
     - 30 chatbot tool tests (unit + scenario)
+    - 3 manual integration tests for chatbot agent with real LLM and database (`tests/agents/test_chatbot.py`)
+        - Search by product name (e.g., MacBook)
+        - Search by merchant name
+        - Handle no search results gracefully
 
 #### Ingress Service (API)
 
@@ -298,6 +302,14 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-02-02
+
+- ✅ Added 3 manual integration tests for chatbot agent (`tests/agents/test_chatbot.py`) that verify end-to-end behavior with real LLM and database:
+    - Search by product name (e.g., "What's the status of my MacBook Pro M4 order?")
+    - Search by merchant name (e.g., "Show me my orders from UniqueStore")
+    - Handle no search results gracefully (e.g., "Where is my ZZZNonexistent order?")
+    - Tests marked as manual because they require Cloud SQL connection and make LLM API calls
 
 ### 2026-02-01
 
