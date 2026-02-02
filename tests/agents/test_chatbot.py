@@ -13,6 +13,8 @@ from uuid import uuid4
 import dotenv
 import pytest
 from google.adk.runners import InMemoryRunner
+from google.genai.types import Content, Part
+from sqlalchemy import text
 
 from trackable.agents.chatbot import chatbot_agent
 from trackable.db import DatabaseConnection, UnitOfWork
@@ -47,33 +49,38 @@ def db_connection():
 @pytest.fixture(scope="module")
 def test_user(db_connection):
     """Get or create a fixed test user for all tests."""
-    from trackable.models.user import User
+    from sqlalchemy import text
+
+    from trackable.db import DatabaseConnection
 
     test_email = "chatbot-integration-test@trackable.test"
 
-    with UnitOfWork() as uow:
-        # Try to find existing user
-        from sqlalchemy import select
-
-        stmt = select(uow.users.table).where(uow.users.table.c.email == test_email)
-        result = uow.session.execute(stmt)
+    session = DatabaseConnection.get_session()
+    try:
+        # Try to find existing test user
+        result = session.execute(
+            text("SELECT id FROM users WHERE email = :email"),
+            {"email": test_email},
+        )
         row = result.fetchone()
 
         if row:
-            user_id = str(row.id)
-        else:
-            # Create new user
-            user = User(
-                id=str(uuid4()),
-                email=test_email,
-                name="Chatbot Test User",
-                status="active",
-            )
-            created = uow.users.create(user)
-            uow.commit()
-            user_id = created.id
+            return str(row[0])
 
-    return user_id
+        # Create new test user if not found
+        now = datetime.now(timezone.utc)
+        user_id = str(uuid4())
+        session.execute(
+            text("""
+                INSERT INTO users (id, email, status, created_at, updated_at)
+                VALUES (:id, :email, 'active', :now, :now)
+            """),
+            {"id": user_id, "email": test_email, "now": now},
+        )
+        session.commit()
+        return user_id
+    finally:
+        session.close()
 
 
 class TestChatbotSearchIntegration:
@@ -147,16 +154,17 @@ class TestChatbotSearchIntegration:
         # Create chatbot session with user context
         runner = InMemoryRunner(agent=chatbot_agent, app_name="test-chatbot")
         session = await runner.session_service.create_session(
-            agent_id=chatbot_agent.name
+            app_name=runner.app_name, user_id="test_user"
         )
 
         # User asks about their MacBook order
         user_message = f"[Context: The current user_id is '{test_user}']\n\nWhat's the status of my MacBook Pro M4 {tag} order?"
+        content = Content(parts=[Part(text=user_message)])
 
         # Run agent and collect response
         response_text = ""
         async for event in runner.run_async(
-            session_id=session.id, new_message=user_message
+            user_id=session.user_id, session_id=session.id, new_message=content
         ):
             if event.content and event.content.parts:
                 for part in event.content.parts:
@@ -189,16 +197,17 @@ class TestChatbotSearchIntegration:
         # Create chatbot session
         runner = InMemoryRunner(agent=chatbot_agent, app_name="test-chatbot")
         session = await runner.session_service.create_session(
-            agent_id=chatbot_agent.name
+            app_name=runner.app_name, user_id="test_user"
         )
 
         # User asks about orders from a specific merchant
         user_message = f"[Context: The current user_id is '{test_user}']\n\nShow me my orders from UniqueStore {tag}"
+        content = Content(parts=[Part(text=user_message)])
 
         # Run agent
         response_text = ""
         async for event in runner.run_async(
-            session_id=session.id, new_message=user_message
+            user_id=session.user_id, session_id=session.id, new_message=content
         ):
             if event.content and event.content.parts:
                 for part in event.content.parts:
@@ -217,17 +226,18 @@ class TestChatbotSearchIntegration:
         # Create chatbot session
         runner = InMemoryRunner(agent=chatbot_agent, app_name="test-chatbot")
         session = await runner.session_service.create_session(
-            agent_id=chatbot_agent.name
+            app_name=runner.app_name, user_id="test_user"
         )
 
         # User asks about a non-existent product
         nonexistent = f"ZZZNonexistent-{uuid4().hex}"
         user_message = f"[Context: The current user_id is '{test_user}']\n\nWhere is my {nonexistent} order?"
+        content = Content(parts=[Part(text=user_message)])
 
         # Run agent
         response_text = ""
         async for event in runner.run_async(
-            session_id=session.id, new_message=user_message
+            user_id=session.user_id, session_id=session.id, new_message=content
         ):
             if event.content and event.content.parts:
                 for part in event.content.parts:
