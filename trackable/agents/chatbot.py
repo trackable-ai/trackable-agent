@@ -6,7 +6,6 @@ online shopping orders after purchase.
 """
 
 from google.adk.agents.llm_agent import Agent
-from google.adk.tools.google_search_tool import google_search
 
 from trackable.agents.tools import (
     check_return_windows,
@@ -72,7 +71,8 @@ When discussing returns or exchanges:
 - If you can't find something, suggest what the user can try
 """,
     tools=[
-        google_search,
+        # NOTE(shengtuo): it seems that google_search tool cannot be used with other function tools
+        # google_search,
         get_user_orders,
         get_order_details,
         search_order_by_number,
