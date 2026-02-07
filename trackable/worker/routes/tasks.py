@@ -8,11 +8,17 @@ import base64
 
 from fastapi import APIRouter, HTTPException, Request
 
-from trackable.models.task import GmailSyncTask, ParseEmailTask, ParseImageTask
+from trackable.models.task import (
+    GmailSyncTask,
+    ParseEmailTask,
+    ParseImageTask,
+    PolicyRefreshTask,
+)
 from trackable.worker.handlers import (
     handle_gmail_sync,
     handle_parse_email,
     handle_parse_image,
+    handle_policy_refresh,
 )
 
 router = APIRouter()
@@ -165,6 +171,81 @@ async def parse_image_task(task: ParseImageTask):
         raise HTTPException(
             status_code=500,
             detail=f"Image parsing failed: {str(e)}",
+        )
+
+
+@router.post("/policy-refresh")
+async def policy_refresh_task(task: PolicyRefreshTask):
+    """
+    Process policy refresh task.
+
+    Cloud Tasks triggers this endpoint to refresh merchant return/exchange policies.
+    Scheduled periodically by Cloud Scheduler or triggered manually.
+
+    Args:
+        task: Policy refresh task payload
+
+    Returns:
+        dict: Processing result with policy info
+
+    Flow:
+        1. Create job record for tracking
+        2. Fetch merchant from database
+        3. Discover policy URL from merchant domain/support_url
+        4. Fetch policy page HTML
+        5. Check if content changed (hash comparison)
+        6. Extract policy using policy_extractor_agent
+        7. Save policy to database (upsert)
+        8. Mark job as completed
+    """
+    try:
+        print(
+            f"🔄 Processing policy refresh task: merchant_id={task.merchant_id}, "
+            f"domain={task.merchant_domain}"
+        )
+
+        # Create job for this policy refresh
+        from trackable.db import DatabaseConnection, UnitOfWork
+        from trackable.models.job import Job, JobType
+
+        job_id = None
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                job = Job(
+                    id="",  # Will be generated
+                    job_type=JobType.POLICY_REFRESH,
+                    user_id=None,  # System job
+                    source_id=None,
+                    metadata={
+                        "merchant_id": task.merchant_id,
+                        "merchant_domain": task.merchant_domain,
+                        "force_refresh": task.force_refresh,
+                    },
+                )
+                created_job = uow.jobs.create(job)
+                job_id = created_job.id
+                uow.commit()
+
+        result = await handle_policy_refresh(
+            job_id=job_id,
+            merchant_id=task.merchant_id,
+            merchant_domain=task.merchant_domain,
+            force_refresh=task.force_refresh,
+        )
+
+        print(f"✅ Policy refresh completed: status={result.get('status')}")
+
+        return {
+            "status": "success",
+            "merchant_id": task.merchant_id,
+            "result": result,
+        }
+
+    except Exception as e:
+        print(f"❌ Policy refresh failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Policy refresh failed: {str(e)}",
         )
 
 

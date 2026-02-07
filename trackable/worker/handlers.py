@@ -14,9 +14,16 @@ from trackable.agents.input_processor import (
     convert_extracted_to_order,
     input_processor_agent,
 )
+from trackable.agents.policy_extractor import (
+    PolicyExtractorOutput,
+    convert_extracted_to_policy,
+    policy_extractor_runner,
+)
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import Merchant, SourceType
+from trackable.models.policy import PolicyType
 from trackable.utils.hash import compute_sha256
+from trackable.utils.web_scraper import discover_policy_url, fetch_policy_page
 
 # Create runner for input processor agent
 input_processor_runner = InMemoryRunner(
@@ -458,6 +465,242 @@ Return structured data with confidence score. If information is unclear or missi
 
     except Exception as e:
         print(f"❌ Image parsing error: {e}")
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                uow.jobs.mark_failed(job_id, str(e))
+                uow.commit()
+        raise
+
+
+async def handle_policy_refresh(
+    job_id: str,
+    merchant_id: str,
+    merchant_domain: str,
+    force_refresh: bool = False,
+) -> dict:
+    """
+    Handle policy refresh task.
+
+    Fetches merchant return/exchange policy from their website and extracts
+    structured policy information using the policy extractor agent.
+
+    Args:
+        job_id: Job ID in database
+        merchant_id: Merchant ID to refresh policy for
+        merchant_domain: Merchant domain for URL discovery
+        force_refresh: Force refresh even if policy hasn't changed (default: False)
+
+    Returns:
+        dict: Processing result with policy info
+    """
+    print(
+        f"🔄 Refreshing policy for merchant_id={merchant_id}, domain={merchant_domain}"
+    )
+
+    # Mark job as started
+    if DatabaseConnection.is_initialized():
+        with UnitOfWork() as uow:
+            uow.jobs.mark_started(job_id)
+            uow.commit()
+
+    try:
+        # Fetch merchant from database to get support_url
+        merchant = None
+        support_url = None
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                merchant = uow.merchants.get_by_id(merchant_id)
+                if merchant and merchant.support_url:
+                    support_url = str(merchant.support_url)
+
+        # Discover candidate policy URLs
+        candidate_urls = discover_policy_url(merchant_domain, support_url)
+        print(f"🔍 Candidate URLs: {candidate_urls}")
+
+        # Try fetching from each candidate URL until success
+        raw_html = None
+        clean_text = None
+        source_url = None
+
+        for url in candidate_urls:
+            try:
+                print(f"📥 Fetching from {url}")
+                raw_html, clean_text = fetch_policy_page(url, timeout=10)
+                source_url = url
+                print(f"✅ Successfully fetched from {url}")
+                break
+            except Exception as e:
+                print(f"⚠️  Failed to fetch from {url}: {e}")
+                continue
+
+        if not raw_html or not clean_text or not source_url:
+            print(f"❌ No policy URL found for {merchant_domain}")
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {"status": "no_policy_url", "attempted_urls": candidate_urls},
+                    )
+                    uow.commit()
+            return {
+                "status": "no_policy_url",
+                "job_id": job_id,
+                "merchant_id": merchant_id,
+                "attempted_urls": candidate_urls,
+            }
+
+        # Check if content has changed using hash (skip if force_refresh)
+        if not force_refresh and DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                # Get existing policy for this merchant (default to RETURN type)
+                existing_policy = uow.policies.get_by_merchant(
+                    merchant_id, PolicyType.RETURN, "US"
+                )
+                if existing_policy and existing_policy.raw_text:
+                    existing_hash = compute_sha256(existing_policy.raw_text.encode())
+                    new_hash = compute_sha256(clean_text.encode())
+                    if existing_hash == new_hash:
+                        print(f"✅ Policy unchanged (hash match), skipping update")
+                        uow.jobs.mark_completed(
+                            job_id,
+                            {
+                                "status": "unchanged",
+                                "source_url": source_url,
+                                "policy_id": existing_policy.id,
+                            },
+                        )
+                        uow.commit()
+                        return {
+                            "status": "unchanged",
+                            "job_id": job_id,
+                            "merchant_id": merchant_id,
+                            "source_url": source_url,
+                            "policy_id": existing_policy.id,
+                        }
+
+        # Extract policy using policy extractor agent
+        print(f"🤖 Extracting policy with agent")
+
+        # Create prompt for policy extractor
+        prompt = f"""Extract return and exchange policy information from this HTML content.
+
+Merchant: {merchant.name if merchant else merchant_domain}
+Domain: {merchant_domain}
+
+HTML Content:
+{clean_text[:10000]}  # Limit to first 10k chars to avoid token limits
+
+Extract all policy details including return windows, conditions, refund methods, shipping responsibility, and exclusions."""
+
+        content = Content(parts=[Part(text=prompt)])
+
+        # Run policy extractor agent
+        session = await policy_extractor_runner.session_service.create_session(
+            app_name=policy_extractor_runner.app_name,
+            user_id="system",  # System job, no user
+        )
+
+        # Collect agent response
+        result_text = ""
+        async for event in policy_extractor_runner.run_async(
+            user_id="system",
+            session_id=session.id,
+            new_message=content,
+        ):
+            if event.content and event.content.parts:
+                for part in event.content.parts:
+                    if part.text:
+                        result_text = part.text
+
+        if not result_text:
+            raise ValueError("No result from policy extractor agent")
+
+        # Parse the JSON response
+        result = json.loads(result_text)
+
+        if isinstance(result, dict):
+            output = PolicyExtractorOutput(**result)
+        else:
+            output = result
+
+        if not output.policies or len(output.policies) == 0:
+            print(f"⚠️  No policies found in content")
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {"status": "no_policies_found", "source_url": source_url},
+                    )
+                    uow.commit()
+            return {
+                "status": "no_policies_found",
+                "job_id": job_id,
+                "merchant_id": merchant_id,
+                "source_url": source_url,
+            }
+
+        # Convert extracted policies to Policy models and save
+        saved_policy_ids = []
+        policy_details = []
+
+        if DatabaseConnection.is_initialized():
+            with UnitOfWork() as uow:
+                for extracted in output.policies:
+                    policy = convert_extracted_to_policy(
+                        extracted=extracted,
+                        merchant_id=merchant_id,
+                        source_url=source_url,
+                        raw_text=clean_text,
+                        country_code="US",
+                    )
+
+                    # Upsert policy (insert or update)
+                    saved_policy = uow.policies.upsert_by_merchant_and_type(policy)
+                    saved_policy_ids.append(saved_policy.id)
+
+                    policy_details.append(
+                        {
+                            "policy_id": saved_policy.id,
+                            "policy_type": saved_policy.policy_type.value,
+                            "confidence_score": saved_policy.confidence_score,
+                            "needs_verification": saved_policy.needs_verification,
+                        }
+                    )
+
+                    print(
+                        f"✅ Saved policy: type={saved_policy.policy_type.value}, "
+                        f"confidence={saved_policy.confidence_score}"
+                    )
+
+                # Mark job as completed
+                uow.jobs.mark_completed(
+                    job_id,
+                    {
+                        "status": "success",
+                        "source_url": source_url,
+                        "policies_saved": len(saved_policy_ids),
+                        "policy_ids": saved_policy_ids,
+                        "policy_details": policy_details,
+                        "overall_confidence": output.overall_confidence,
+                    },
+                )
+                uow.commit()
+
+        print(f"✅ Policy refresh completed: {len(saved_policy_ids)} policies saved")
+
+        return {
+            "status": "success",
+            "job_id": job_id,
+            "merchant_id": merchant_id,
+            "source_url": source_url,
+            "policies_saved": len(saved_policy_ids),
+            "policy_ids": saved_policy_ids,
+            "policy_details": policy_details,
+            "overall_confidence": output.overall_confidence,
+        }
+
+    except Exception as e:
+        print(f"❌ Policy refresh error: {e}")
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 uow.jobs.mark_failed(job_id, str(e))

@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-02-02
+**Last Updated**: 2026-02-07
 
 ## Overview
 
@@ -66,6 +66,13 @@ This document tracks the implementation progress of the Trackable Personal Shopp
         - Search by product name (e.g., MacBook)
         - Search by merchant name
         - Handle no search results gracefully
+- [x] **Policy Extractor Agent** (`trackable/agents/policy_extractor.py`)
+    - Extracts structured policy data from HTML policy pages
+    - Structured output with `PolicyExtractorOutput` and `ExtractedPolicyData`
+    - Parses return windows, conditions, refund methods, shipping responsibility, exclusions
+    - Handles both return and exchange policies
+    - Confidence scoring (0.9+ = clear, 0.7-0.8 = ambiguous, <0.7 = needs verification)
+    - Helper function `convert_extracted_to_policy()` to convert to Policy model
 
 #### Ingress Service (API)
 
@@ -108,12 +115,26 @@ This document tracks the implementation progress of the Trackable Personal Shopp
         - `POST /tasks/gmail-sync` - Gmail sync task
         - `POST /tasks/parse-email` - Email parsing task
         - `POST /tasks/parse-image` - Screenshot parsing task
+        - `POST /tasks/policy-refresh` - Policy refresh task
         - `POST /tasks/test` - Test endpoint for local development
     - Task handlers with input processor agent integration
     - MIME type auto-detection for images
     - Dockerfile for Cloud Run deployment
     - Comprehensive tests with real samples (email + screenshot)
     - Worker service documentation
+- [x] **Policy Refresh Handler** (`trackable/worker/handlers.py`)
+    - `handle_policy_refresh()` - Fetches and extracts merchant policies
+    - Web scraping utilities (`trackable/utils/web_scraper.py`):
+        - `fetch_policy_page()` - HTTP fetching with BeautifulSoup and realistic browser User-Agent
+        - `discover_policy_url()` - Policy URL discovery from domain
+    - Policy URL discovery (support_url priority, then common patterns)
+    - Hash-based change detection (skips update if content unchanged)
+    - PolicyRepository with upsert by merchant/type/country
+    - Creates Job records for tracking
+    - 7 unit tests for web scraper
+    - 6 manual tests for policy extraction (including Amazon real-world test)
+    - 6 PolicyRepository integration tests + 1 manual test populating Amazon policy to database
+    - Successfully populated real Amazon return policy data to Cloud SQL
 
 #### Documentation
 
@@ -163,6 +184,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
         - `order.py` - Order CRUD with JSONB items/money
         - `shipment.py` - Shipment tracking events
         - `oauth_token.py` - OAuth token storage and refresh
+        - `policy.py` - Policy CRUD with hash-based change detection
 - [x] Database initialization in `worker/main.py` and `api/main.py`
 - [x] Refactored `worker/handlers.py` to use repositories
     - Save parsed orders to database
@@ -271,11 +293,6 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Gmail API integration with incremental sync
     - [ ] Email filtering for order confirmations
     - [ ] Batch processing of multiple emails
-- [ ] Policy refresh handler (`trackable/worker/handlers.py`)
-    - [ ] Implement `handle_policy_refresh()` function
-    - [ ] Web scraping for merchant policy pages
-    - [ ] Policy parsing and extraction
-    - [ ] Hash-based change detection
 
 #### Integration & Testing
 
@@ -302,6 +319,56 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-02-07
+
+- ✅ **Policy Refresh Handler Implementation** - Complete end-to-end policy extraction system with comprehensive testing
+    - Created `PolicyRepository` (`trackable/db/repositories/policy.py`)
+        - `get_by_merchant()` - Get specific policy by merchant/type/country
+        - `list_by_merchant()` - Get all policies for a merchant
+        - `upsert_by_merchant_and_type()` - Insert or update with hash-based change detection
+        - SHA-256 hash comparison to skip updates when content unchanged
+    - Created `PolicyExtractorAgent` (`trackable/agents/policy_extractor.py`)
+        - Extracts structured return/exchange policy data from HTML
+        - Output schema: `PolicyExtractorOutput` with list of `ExtractedPolicyData`
+        - Confidence scoring for policy interpretation quality
+        - `convert_extracted_to_policy()` helper to convert to Policy model
+    - Created web scraping utilities (`trackable/utils/web_scraper.py`)
+        - `fetch_policy_page()` - HTTP fetching with BeautifulSoup cleaning
+        - `discover_policy_url()` - URL discovery (support_url priority + common patterns)
+        - Realistic browser User-Agent header to avoid anti-bot blocking
+    - Implemented `handle_policy_refresh()` in `trackable/worker/handlers.py`
+        - Fetches merchant from database (gets support_url)
+        - Discovers and tries candidate policy URLs
+        - Hash-based change detection (skips if unchanged, unless force_refresh)
+        - Extracts policy using policy_extractor_agent
+        - Saves policies via PolicyRepository.upsert_by_merchant_and_type()
+        - Returns status: "success", "unchanged", "no_policy_url", or "no_policies_found"
+    - Added `POST /tasks/policy-refresh` endpoint in `trackable/worker/routes/tasks.py`
+        - Creates Job record (JobType.POLICY_REFRESH, user_id=None for system jobs)
+        - Calls `handle_policy_refresh()` with task parameters
+    - Updated `UnitOfWork` with `policies` property
+    - Updated repository exports in `trackable/db/repositories/__init__.py`
+    - Added `requests` dependency via `uv add requests`
+    - **Comprehensive testing:**
+        - 7 unit tests for web scraper (`tests/utils/test_web_scraper.py`) - all passing
+        - 6 manual tests for policy extractor agent (`tests/agents/test_policy_extractor.py`)
+            - Sample policy HTML extraction
+            - Confidence scoring verification
+            - Combined return/exchange policy handling
+            - Amazon policy extraction from saved HTML (no network required)
+            - Live Amazon policy fetching test (marked manual)
+        - 6 PolicyRepository integration tests (`tests/integration/test_policy_integration.py`)
+            - Create, get, list, upsert operations
+            - Hash-based change detection verification
+        - 1 manual integration test successfully populating real Amazon return policy to Cloud SQL database
+            - Merchant ID: `1a928277-a155-4ba8-b0bd-c8c95640c36c`
+            - Policy ID: `4c493294-69f3-4177-a39d-79ea387dad88`
+            - Return window: 30 days, Confidence: 0.9
+    - Saved test data:
+        - `tests/agents/data/amazon_return_policy.html` (347KB raw HTML)
+        - `tests/agents/data/amazon_return_policy_clean.txt` (17KB clean text)
+    - All type errors resolved with proper None checks for optional fields
 
 ### 2026-02-02
 

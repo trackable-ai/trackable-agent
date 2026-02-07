@@ -13,6 +13,7 @@ from trackable.db.repositories.job import JobRepository
 from trackable.db.repositories.merchant import MerchantRepository
 from trackable.db.repositories.oauth_token import OAuthTokenRepository
 from trackable.db.repositories.order import OrderRepository
+from trackable.db.repositories.policy import PolicyRepository
 from trackable.db.repositories.shipment import ShipmentRepository
 from trackable.db.repositories.source import SourceRepository
 from trackable.db.repositories.user import UserRepository
@@ -47,6 +48,7 @@ class UnitOfWork:
         self._merchants: MerchantRepository | None = None
         self._oauth_tokens: OAuthTokenRepository | None = None
         self._orders: OrderRepository | None = None
+        self._policies: PolicyRepository | None = None
         self._shipments: ShipmentRepository | None = None
         self._sources: SourceRepository | None = None
         self._users: UserRepository | None = None
@@ -97,6 +99,13 @@ class UnitOfWork:
         return self._orders
 
     @property
+    def policies(self) -> PolicyRepository:
+        """Policy repository for this unit of work."""
+        if self._policies is None:
+            self._policies = PolicyRepository(self.session)
+        return self._policies
+
+    @property
     def shipments(self) -> ShipmentRepository:
         """Shipment repository for this unit of work."""
         if self._shipments is None:
@@ -134,6 +143,7 @@ class UnitOfWork:
             self._merchants = None
             self._oauth_tokens = None
             self._orders = None
+            self._policies = None
             self._shipments = None
             self._sources = None
             self._users = None

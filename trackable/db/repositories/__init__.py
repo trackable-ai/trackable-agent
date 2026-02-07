@@ -8,6 +8,7 @@ encapsulating SQLAlchemy queries and Pydantic model conversions.
 from trackable.db.repositories.job import JobRepository
 from trackable.db.repositories.merchant import MerchantRepository
 from trackable.db.repositories.order import OrderRepository
+from trackable.db.repositories.policy import PolicyRepository
 from trackable.db.repositories.shipment import ShipmentRepository
 from trackable.db.repositories.source import SourceRepository
 from trackable.db.repositories.user import UserRepository
@@ -16,6 +17,7 @@ __all__ = [
     "JobRepository",
     "MerchantRepository",
     "OrderRepository",
+    "PolicyRepository",
     "ShipmentRepository",
     "SourceRepository",
     "UserRepository",
