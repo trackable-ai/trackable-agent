@@ -13,7 +13,7 @@ The system uses **Cloud Tasks** for async job processing, **Cloud SQL (PostgreSQ
 
 ## Progress Tracking
 
-- Always refer to [dev_tracking.md](../docs/dev_tracking.md) for the progress.
+- Always refer to [dev_tracking.md](docs/dev_tracking.md) for the progress.
 - Three status: Completed, In Progress, Not Started
 - Always add new TODOs to the progress tracking file in time
 - Always update the task status once tasks are complete or in progress
