@@ -40,7 +40,9 @@ gcloud run deploy $SERVICE_NAME \
   --memory 2Gi \
   --timeout 300 \
   --max-instances 10 \
-  --min-instances 0 \
+  --min-instances 1 \
+  --concurrency 20 \
+  --cpu-boost \
   --port 8080
 
 echo -e "${GREEN}✅ Deployment complete!${NC}"
