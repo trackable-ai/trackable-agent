@@ -80,7 +80,7 @@ class ChatCompletionUsage(BaseModel):
 
 
 class ChatCompletionResponse(BaseModel):
-    """OpenAI-compatible chat completion response."""
+    """OpenAI-compatible chat completion response with Trackable extensions."""
 
     id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex[:12]}")
     object: Literal["chat.completion"] = "chat.completion"
@@ -88,6 +88,11 @@ class ChatCompletionResponse(BaseModel):
     model: str = "gemini-2.5-flash"
     choices: list[ChatCompletionChoice]
     usage: ChatCompletionUsage = Field(default_factory=ChatCompletionUsage)
+    # Trackable extension: suggested next actions for the frontend
+    suggestions: list["Suggestion"] = Field(
+        default_factory=list,
+        description="Suggested next actions rendered as buttons in the chat UI",
+    )
 
 
 # Streaming response models
@@ -116,3 +121,28 @@ class ChatCompletionChunk(BaseModel):
     created: int
     model: str = "gemini-2.5-flash"
     choices: list[ChatCompletionChunkChoice]
+
+
+# Chatbot structured output models
+
+
+class Suggestion(BaseModel):
+    """A suggested next action rendered as a button in the chat UI."""
+
+    label: str = Field(description="Short button label (e.g., 'Check return window')")
+    prompt: str = Field(
+        description="The message to send when the user clicks this suggestion"
+    )
+
+
+class ChatbotOutput(BaseModel):
+    """Structured output from the chatbot agent."""
+
+    content: str = Field(
+        description="The main response content formatted in markdown. "
+        "Use markdown tables for order lists and order details."
+    )
+    suggestions: list[Suggestion] = Field(
+        default_factory=list,
+        description="Up to 3 suggested next actions for the user",
+    )

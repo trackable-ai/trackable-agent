@@ -3,8 +3,11 @@ OpenAI-compatible Chat Completions API.
 
 Provides chat completion endpoints following the OpenAI API format:
 https://platform.openai.com/docs/api-reference/chat
+
+Extended with Trackable-specific fields (suggestions) for richer UI.
 """
 
+import json
 import logging
 import time
 import uuid
@@ -17,6 +20,7 @@ from google.genai.types import Content, Part
 
 from trackable.agents.chatbot import chatbot_agent
 from trackable.models.chat import (
+    ChatbotOutput,
     ChatCompletionChoice,
     ChatCompletionChunk,
     ChatCompletionChunkChoice,
@@ -26,6 +30,7 @@ from trackable.models.chat import (
     ChatCompletionResponse,
     ChatCompletionUsage,
     MessageRole,
+    Suggestion,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,8 +90,22 @@ def _build_prompt_from_messages(messages: list, user_id: str | None = None) -> s
     return prompt
 
 
-async def _run_agent(user_id: str, prompt: str) -> str:
-    """Run the agent and return the response text."""
+def _parse_chatbot_output(response_text: str) -> ChatbotOutput:
+    """Parse the agent's JSON response into a ChatbotOutput.
+
+    With output_schema set, the agent returns JSON matching ChatbotOutput.
+    Falls back gracefully if parsing fails.
+    """
+    try:
+        data = json.loads(response_text)
+        return ChatbotOutput(**data)
+    except ValueError:
+        logger.warning("Failed to parse agent output as ChatbotOutput, using raw text")
+        return ChatbotOutput(content=response_text, suggestions=[])
+
+
+async def _run_agent(user_id: str, prompt: str) -> ChatbotOutput:
+    """Run the agent and return the structured output."""
     session_id = await _get_or_create_session(user_id)
     new_message = Content(parts=[Part(text=prompt)], role="user")
 
@@ -103,7 +122,20 @@ async def _run_agent(user_id: str, prompt: str) -> str:
                 if part.text:
                     response_text = part.text
 
-    return response_text or "I apologize, but I couldn't generate a response."
+    if not response_text:
+        return ChatbotOutput(
+            content="I apologize, but I couldn't generate a response.",
+            suggestions=[
+                Suggestion(label="Show my orders", prompt="Show me all my orders"),
+                Suggestion(
+                    label="Check return windows",
+                    prompt="Check my return windows",
+                ),
+                Suggestion(label="Help", prompt="What can you help me with?"),
+            ],
+        )
+
+    return _parse_chatbot_output(response_text)
 
 
 async def _generate_stream(
@@ -113,7 +145,12 @@ async def _generate_stream(
     user_id: str,
     prompt: str,
 ) -> AsyncIterator[str]:
-    """Generate OpenAI-compatible streaming response."""
+    """Generate streaming response with structured output.
+
+    Since the agent returns JSON (due to output_schema), we collect the full
+    response, parse it, then stream the markdown content and emit suggestions
+    as a final metadata event.
+    """
     session_id = await _get_or_create_session(user_id)
     new_message = Content(parts=[Part(text=prompt)], role="user")
 
@@ -135,7 +172,7 @@ async def _generate_stream(
     )
     yield f"data: {initial_chunk.model_dump_json()}\n\n"
 
-    # Stream content
+    # Collect the full response (agent returns JSON with output_schema)
     response_text = ""
     async for event in runner.run_async(
         user_id=user_id,
@@ -146,22 +183,34 @@ async def _generate_stream(
             continue
         if event.content.parts:
             for part in event.content.parts:
-                if part.text and part.text != response_text:
-                    delta = part.text[len(response_text) :]
+                if part.text:
                     response_text = part.text
 
-                    chunk = ChatCompletionChunk(
-                        id=request_id,
-                        created=created,
-                        model=model,
-                        choices=[
-                            ChatCompletionChunkChoice(
-                                delta=ChatCompletionChunkDelta(content=delta),
-                                finish_reason=None,
-                            )
-                        ],
-                    )
-                    yield f"data: {chunk.model_dump_json()}\n\n"
+    # Parse the structured output
+    output = _parse_chatbot_output(response_text)
+
+    # Send content as a single chunk
+    if output.content:
+        content_chunk = ChatCompletionChunk(
+            id=request_id,
+            created=created,
+            model=model,
+            choices=[
+                ChatCompletionChunkChoice(
+                    delta=ChatCompletionChunkDelta(content=output.content),
+                    finish_reason=None,
+                )
+            ],
+        )
+        yield f"data: {content_chunk.model_dump_json()}\n\n"
+
+    # Send suggestions as a metadata event before the final stop
+    if output.suggestions:
+        suggestions_data = {
+            "type": "suggestions",
+            "suggestions": [s.model_dump() for s in output.suggestions],
+        }
+        yield f"data: {json.dumps(suggestions_data)}\n\n"
 
     # Send final chunk with finish_reason
     final_chunk = ChatCompletionChunk(
@@ -187,6 +236,8 @@ async def chat_completions(request: ChatCompletionRequest):
     OpenAI-compatible chat completions endpoint.
 
     Supports both streaming and non-streaming responses.
+    Response includes `suggestions` — a list of next-step actions
+    that the frontend renders as clickable buttons.
 
     Args:
         request: Chat completion request with messages
@@ -213,7 +264,7 @@ async def chat_completions(request: ChatCompletionRequest):
             )
 
         # Non-streaming response
-        response_text = await _run_agent(user_id, prompt)
+        output = await _run_agent(user_id, prompt)
 
         return ChatCompletionResponse(
             id=request_id,
@@ -221,15 +272,16 @@ async def chat_completions(request: ChatCompletionRequest):
             model=model,
             choices=[
                 ChatCompletionChoice(
-                    message=ChatCompletionMessage(content=response_text),
+                    message=ChatCompletionMessage(content=output.content),
                     finish_reason="stop",
                 )
             ],
             usage=ChatCompletionUsage(
                 prompt_tokens=len(prompt.split()),
-                completion_tokens=len(response_text.split()),
-                total_tokens=len(prompt.split()) + len(response_text.split()),
+                completion_tokens=len(output.content.split()),
+                total_tokens=len(prompt.split()) + len(output.content.split()),
             ),
+            suggestions=output.suggestions,
         )
 
     except Exception as e:

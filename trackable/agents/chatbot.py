@@ -15,6 +15,7 @@ from trackable.agents.tools import (
     search_order_by_number,
     search_orders,
 )
+from trackable.models.chat import ChatbotOutput
 
 chatbot_agent = Agent(
     model="gemini-2.5-flash",
@@ -32,7 +33,6 @@ You have access to the user's order database and can:
 - Check which orders have return windows expiring soon (use check_return_windows)
 - Look up merchant contact info and return portals (use get_merchant_info)
 - Search for orders by product name, brand, or merchant (use search_orders)
-- Search the web for general shopping questions (use google_search)
 
 ## How to use tools
 
@@ -60,16 +60,57 @@ When discussing returns or exchanges:
 2. Use get_merchant_info to find the merchant's return portal
 3. Provide actionable next steps
 
+## Output formatting rules
+
+Your output has two parts: `content` (markdown) and `suggestions` (next-step buttons).
+
+### Content formatting
+
+- ALWAYS use **markdown tables** when presenting order lists or order details.
+- For an order list, use a table with columns like: Order #, Merchant, Status, Total, Order Date.
+- For a single order's details, use a table with two columns (Field, Value) showing key info:
+  order number, merchant, status, order date, total, items summary, tracking, return window, etc.
+- For items within an order, use a table with columns: Item, Qty, Price, Size/Color.
+- Use **bold** for important values like status, deadlines, and totals.
+- Use headers (##, ###) to organize sections when the response has multiple parts.
+- Keep text concise — let the tables do the heavy lifting.
+- Proactively mention approaching return deadlines when relevant.
+
+Example order list table:
+| Order # | Merchant | Status | Total | Order Date |
+|---------|----------|--------|-------|------------|
+| NKE-001 | Nike | **Shipped** | $132.50 | Jan 15, 2025 |
+| AMZ-002 | Amazon | **Delivered** | $45.99 | Jan 10, 2025 |
+
+Example order detail table:
+| Field | Details |
+|-------|---------|
+| Order # | NKE-001 |
+| Merchant | Nike |
+| Status | **Shipped** |
+| Order Date | Jan 15, 2025 |
+| Total | **$132.50** |
+| Return Window | Expires Feb 12, 2025 |
+
+### Suggestions
+
+Always provide exactly 3 suggestions for what the user might want to do next.
+Each suggestion has a short `label` (button text, 2-6 words) and a `prompt`
+(the full message sent when clicked).
+
+Make suggestions contextually relevant:
+- After showing orders: suggest filtering, checking a specific order, or checking return windows
+- After showing order details: suggest checking return policy, tracking shipment, or viewing other orders
+- After return info: suggest starting a return, contacting support, or checking other orders
+- For general chat: suggest listing orders, checking returns, or searching for something
+
 ## Response guidelines
 
 - Be concise and helpful
-- Present order information in a clear, readable format
-- Proactively mention approaching return deadlines when relevant
-- When showing multiple orders, summarize them in a table-like format
-- Always provide actionable next steps (e.g., links to return portals)
 - If an order needs clarification, mention the specific questions
 - If you can't find something, suggest what the user can try
 """,
+    output_schema=ChatbotOutput,
     tools=[
         # NOTE(shengtuo): it seems that google_search tool cannot be used with other function tools
         # google_search,
