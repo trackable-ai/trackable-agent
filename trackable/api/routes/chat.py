@@ -204,15 +204,7 @@ async def _generate_stream(
         )
         yield f"data: {content_chunk.model_dump_json()}\n\n"
 
-    # Send suggestions as a metadata event before the final stop
-    if output.suggestions:
-        suggestions_data = {
-            "type": "suggestions",
-            "suggestions": [s.model_dump() for s in output.suggestions],
-        }
-        yield f"data: {json.dumps(suggestions_data)}\n\n"
-
-    # Send final chunk with finish_reason
+    # Send final chunk with finish_reason and suggestions
     final_chunk = ChatCompletionChunk(
         id=request_id,
         created=created,
@@ -223,6 +215,7 @@ async def _generate_stream(
                 finish_reason="stop",
             )
         ],
+        suggestions=output.suggestions or None,
     )
     yield f"data: {final_chunk.model_dump_json()}\n\n"
 

@@ -114,13 +114,18 @@ class ChatCompletionChunkChoice(BaseModel):
 
 
 class ChatCompletionChunk(BaseModel):
-    """OpenAI-compatible streaming chunk."""
+    """OpenAI-compatible streaming chunk with Trackable extensions."""
 
     id: str
     object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
     created: int
     model: str = "gemini-2.5-flash"
     choices: list[ChatCompletionChunkChoice]
+    # Trackable extension: included in the final chunk (finish_reason="stop")
+    suggestions: list["Suggestion"] | None = Field(
+        default=None,
+        description="Suggested next actions, present only in the final chunk",
+    )
 
 
 # Chatbot structured output models
