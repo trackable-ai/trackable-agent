@@ -223,7 +223,11 @@ async def _generate_stream(
     yield "data: [DONE]\n\n"
 
 
-@router.post("/chat/completions", operation_id="createChatCompletion")
+@router.post(
+    "/chat/completions",
+    operation_id="createChatCompletion",
+    response_model=ChatCompletionResponse,
+)
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completions endpoint.

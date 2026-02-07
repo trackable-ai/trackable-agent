@@ -79,6 +79,18 @@ class ChatCompletionUsage(BaseModel):
     total_tokens: int = 0
 
 
+# Trackable extension models (defined before response models that reference them)
+
+
+class Suggestion(BaseModel):
+    """A suggested next action rendered as a button in the chat UI."""
+
+    label: str = Field(description="Short button label (e.g., 'Check return window')")
+    prompt: str = Field(
+        description="The message to send when the user clicks this suggestion"
+    )
+
+
 class ChatCompletionResponse(BaseModel):
     """OpenAI-compatible chat completion response with Trackable extensions."""
 
@@ -89,7 +101,7 @@ class ChatCompletionResponse(BaseModel):
     choices: list[ChatCompletionChoice]
     usage: ChatCompletionUsage = Field(default_factory=ChatCompletionUsage)
     # Trackable extension: suggested next actions for the frontend
-    suggestions: list["Suggestion"] = Field(
+    suggestions: list[Suggestion] = Field(
         default_factory=list,
         description="Suggested next actions rendered as buttons in the chat UI",
     )
@@ -122,22 +134,13 @@ class ChatCompletionChunk(BaseModel):
     model: str = "gemini-2.5-flash"
     choices: list[ChatCompletionChunkChoice]
     # Trackable extension: included in the final chunk (finish_reason="stop")
-    suggestions: list["Suggestion"] | None = Field(
+    suggestions: list[Suggestion] | None = Field(
         default=None,
         description="Suggested next actions, present only in the final chunk",
     )
 
 
-# Chatbot structured output models
-
-
-class Suggestion(BaseModel):
-    """A suggested next action rendered as a button in the chat UI."""
-
-    label: str = Field(description="Short button label (e.g., 'Check return window')")
-    prompt: str = Field(
-        description="The message to send when the user clicks this suggestion"
-    )
+# Chatbot structured output model
 
 
 class ChatbotOutput(BaseModel):
