@@ -31,7 +31,7 @@ def _check_db_available():
         )
 
 
-@router.get("/orders", response_model=OrderListResponse)
+@router.get("/orders", response_model=OrderListResponse, operation_id="listOrders")
 async def list_orders(
     user_id: str = Depends(get_user_id),
     status: str | None = Query(default=None, description="Filter by order status"),
@@ -94,7 +94,11 @@ async def list_orders(
         )
 
 
-@router.get("/orders/{order_id}/history", response_model=OrderHistoryResponse)
+@router.get(
+    "/orders/{order_id}/history",
+    response_model=OrderHistoryResponse,
+    operation_id="getOrderHistory",
+)
 async def get_order_history(
     order_id: str,
     user_id: str = Depends(get_user_id),
@@ -148,7 +152,9 @@ async def get_order_history(
         )
 
 
-@router.get("/orders/{order_id}/latest", response_model=Order)
+@router.get(
+    "/orders/{order_id}/latest", response_model=Order, operation_id="getOrderLatest"
+)
 async def get_order_latest(
     order_id: str,
     user_id: str = Depends(get_user_id),
@@ -177,7 +183,7 @@ async def get_order_latest(
         return order
 
 
-@router.patch("/orders/{order_id}", response_model=Order)
+@router.patch("/orders/{order_id}", response_model=Order, operation_id="updateOrder")
 async def update_order(
     order_id: str,
     request: OrderUpdateRequest,
@@ -253,7 +259,7 @@ async def update_order(
         )
 
 
-@router.delete("/orders/{order_id}")
+@router.delete("/orders/{order_id}", operation_id="deleteOrder")
 async def delete_order(
     order_id: str,
     user_id: str = Depends(get_user_id),

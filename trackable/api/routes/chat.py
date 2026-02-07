@@ -230,7 +230,7 @@ async def _generate_stream(
     yield "data: [DONE]\n\n"
 
 
-@router.post("/chat/completions")
+@router.post("/chat/completions", operation_id="createChatCompletion")
 async def chat_completions(request: ChatCompletionRequest):
     """
     OpenAI-compatible chat completions endpoint.
@@ -291,7 +291,7 @@ async def chat_completions(request: ChatCompletionRequest):
         )
 
 
-@router.delete("/chat/sessions")
+@router.delete("/chat/sessions", operation_id="clearChatSession")
 async def clear_session(user: str = "default_user"):
     """
     Clear the chat session for a user, resetting conversation history.

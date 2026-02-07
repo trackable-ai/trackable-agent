@@ -227,7 +227,7 @@ async def _process_single_image(
         )
 
 
-@router.post("/ingest/email", response_model=IngestResponse)
+@router.post("/ingest/email", response_model=IngestResponse, operation_id="ingestEmail")
 async def ingest_email(
     request: IngestEmailRequest,
     user_id: str = Depends(get_user_id),
@@ -265,7 +265,7 @@ async def ingest_email(
     )
 
 
-@router.post("/ingest/image", response_model=IngestResponse)
+@router.post("/ingest/image", response_model=IngestResponse, operation_id="ingestImage")
 async def ingest_image(
     request: IngestImageRequest,
     user_id: str = Depends(get_user_id),
@@ -304,7 +304,11 @@ async def ingest_image(
     )
 
 
-@router.post("/ingest/email/batch", response_model=IngestBatchResponse)
+@router.post(
+    "/ingest/email/batch",
+    response_model=IngestBatchResponse,
+    operation_id="ingestEmailBatch",
+)
 async def ingest_email_batch(
     request: IngestBatchEmailRequest,
     user_id: str = Depends(get_user_id),
@@ -366,7 +370,11 @@ async def ingest_email_batch(
     )
 
 
-@router.post("/ingest/image/batch", response_model=IngestBatchResponse)
+@router.post(
+    "/ingest/image/batch",
+    response_model=IngestBatchResponse,
+    operation_id="ingestImageBatch",
+)
 async def ingest_image_batch(
     request: IngestBatchImageRequest,
     user_id: str = Depends(get_user_id),

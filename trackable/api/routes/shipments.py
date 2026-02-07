@@ -33,7 +33,11 @@ def _check_db_available():
         )
 
 
-@router.get("/orders/{order_id}/shipments", response_model=list[Shipment])
+@router.get(
+    "/orders/{order_id}/shipments",
+    response_model=list[Shipment],
+    operation_id="listShipments",
+)
 async def list_shipments(
     order_id: str,
     user_id: str = Depends(get_user_id),
@@ -65,7 +69,12 @@ async def list_shipments(
         return uow.shipments.get_by_order(order_id)
 
 
-@router.post("/orders/{order_id}/shipments", response_model=Shipment, status_code=201)
+@router.post(
+    "/orders/{order_id}/shipments",
+    response_model=Shipment,
+    status_code=201,
+    operation_id="createShipment",
+)
 async def create_shipment(
     order_id: str,
     request: ShipmentCreateRequest,
@@ -133,7 +142,11 @@ async def create_shipment(
         )
 
 
-@router.get("/orders/{order_id}/shipments/{shipment_id}", response_model=Shipment)
+@router.get(
+    "/orders/{order_id}/shipments/{shipment_id}",
+    response_model=Shipment,
+    operation_id="getShipment",
+)
 async def get_shipment(
     order_id: str,
     shipment_id: str,
@@ -174,7 +187,11 @@ async def get_shipment(
         return shipment
 
 
-@router.patch("/orders/{order_id}/shipments/{shipment_id}", response_model=Shipment)
+@router.patch(
+    "/orders/{order_id}/shipments/{shipment_id}",
+    response_model=Shipment,
+    operation_id="updateShipment",
+)
 async def update_shipment(
     order_id: str,
     shipment_id: str,
@@ -269,7 +286,9 @@ async def update_shipment(
 
 
 @router.post(
-    "/orders/{order_id}/shipments/{shipment_id}/events", response_model=Shipment
+    "/orders/{order_id}/shipments/{shipment_id}/events",
+    response_model=Shipment,
+    operation_id="addTrackingEvent",
 )
 async def add_tracking_event(
     order_id: str,

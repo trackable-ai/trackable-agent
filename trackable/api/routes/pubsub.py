@@ -48,7 +48,11 @@ def _decode_pubsub_data(data: str) -> dict:
         raise ValueError(f"Failed to decode Pub/Sub data: {e}")
 
 
-@router.post("/pubsub/gmail", response_model=PubSubResponse)
+@router.post(
+    "/pubsub/gmail",
+    response_model=PubSubResponse,
+    operation_id="handleGmailNotification",
+)
 async def handle_gmail_notification(message: PubSubPushMessage) -> PubSubResponse:
     """
     Handle Gmail Pub/Sub push notifications.
@@ -166,7 +170,9 @@ async def handle_gmail_notification(message: PubSubPushMessage) -> PubSubRespons
         )
 
 
-@router.post("/pubsub/policy", response_model=PubSubResponse)
+@router.post(
+    "/pubsub/policy", response_model=PubSubResponse, operation_id="handlePolicyRefresh"
+)
 async def handle_policy_refresh(message: PubSubPushMessage) -> PubSubResponse:
     """
     Handle policy refresh Pub/Sub trigger from Cloud Scheduler.
