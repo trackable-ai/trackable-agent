@@ -5,6 +5,9 @@ These handlers contain the business logic for processing different task types.
 """
 
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Blob, Content, Part
@@ -14,6 +17,9 @@ from trackable.agents.input_processor import (
     convert_extracted_to_order,
     input_processor_agent,
 )
+
+# Minimum confidence score required to save an extracted order
+MIN_ORDER_CONFIDENCE = 0.9
 from trackable.agents.policy_extractor import (
     PolicyExtractorOutput,
     convert_extracted_to_policy,
@@ -80,7 +86,7 @@ async def handle_gmail_sync(
     # 3. For each email, call handle_parse_email
     # 4. Update user's last_history_id in database
 
-    print(f"📧 Gmail sync for {user_email}, history_id={history_id}")
+    logger.info("Gmail sync for %s, history_id=%s", user_email, history_id)
 
     # Placeholder implementation
     return {
@@ -111,7 +117,7 @@ async def handle_parse_email(
     Returns:
         dict: Processing result with order info
     """
-    print(f"📨 Parsing email for job_id={job_id}")
+    logger.info("Parsing email for job_id=%s", job_id)
 
     # Mark job as started (if DB is available)
     if DatabaseConnection.is_initialized():
@@ -169,7 +175,7 @@ Return structured data with confidence score."""
             output = result
 
         if not output.orders or len(output.orders) == 0:
-            print(f"⚠️  No orders found in email")
+            logger.warning("No orders found in email")
             # Update job status to completed with no orders
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
@@ -184,6 +190,34 @@ Return structured data with confidence score."""
         # Get the first extracted order
         extracted = output.orders[0]
 
+        # Reject low-confidence extractions
+        if extracted.confidence_score < MIN_ORDER_CONFIDENCE:
+            logger.warning(
+                "Low confidence (%.2f) for email order from %s, threshold=%.2f",
+                extracted.confidence_score,
+                extracted.merchant_name,
+                MIN_ORDER_CONFIDENCE,
+            )
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {
+                            "status": "low_confidence",
+                            "confidence_score": extracted.confidence_score,
+                            "threshold": MIN_ORDER_CONFIDENCE,
+                            "merchant_name": extracted.merchant_name,
+                        },
+                    )
+                    uow.commit()
+            return {
+                "status": "low_confidence",
+                "job_id": job_id,
+                "order_id": None,
+                "confidence_score": extracted.confidence_score,
+                "threshold": MIN_ORDER_CONFIDENCE,
+            }
+
         # Convert to Order model
         order = convert_extracted_to_order(
             extracted=extracted,
@@ -192,8 +226,10 @@ Return structured data with confidence score."""
             source_id=source_id,
         )
 
-        print(
-            f"✅ Extracted order: merchant={order.merchant.name}, confidence={order.confidence_score}"
+        logger.info(
+            "Extracted order: merchant=%s, confidence=%.2f",
+            order.merchant.name,
+            order.confidence_score,
         )
 
         # Save to database if available
@@ -209,13 +245,36 @@ Return structured data with confidence score."""
                     support_url=order.merchant.support_url,
                     return_portal_url=order.merchant.return_portal_url,
                 )
+                logger.info(
+                    "Upserting merchant: name=%s, domain=%s",
+                    merchant_model.name,
+                    merchant_model.domain,
+                )
                 saved_merchant = uow.merchants.upsert_by_domain(merchant_model)
+                logger.info(
+                    "Merchant upsert result: id=%s, name=%s, domain=%s",
+                    saved_merchant.id,
+                    saved_merchant.name,
+                    saved_merchant.domain,
+                )
 
                 # Update order with persisted merchant ID
                 order.merchant.id = saved_merchant.id
 
                 # Upsert order (update existing or create new)
+                logger.info(
+                    "Upserting order: order_number=%s, merchant_id=%s, user_id=%s",
+                    order.order_number,
+                    order.merchant.id,
+                    order.user_id,
+                )
                 saved_order, is_new_order = uow.orders.upsert_by_order_number(order)
+                logger.info(
+                    "Order upsert result: id=%s, order_number=%s, is_new=%s",
+                    saved_order.id,
+                    saved_order.order_number,
+                    is_new_order,
+                )
 
                 # Mark source as processed
                 uow.sources.mark_processed(source_id, saved_order.id)
@@ -237,7 +296,7 @@ Return structured data with confidence score."""
             order_id = order.id
 
         status = "created" if is_new_order else "updated"
-        print(f"✅ Order {status}: {order_id}")
+        logger.info("Order %s: %s", status, order_id)
 
         return {
             "status": status,
@@ -250,7 +309,7 @@ Return structured data with confidence score."""
         }
 
     except Exception as e:
-        print(f"❌ Email parsing error: {e}")
+        logger.exception("Email parsing error: %s", e)
         # Update job status to failed
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
@@ -281,7 +340,7 @@ async def handle_parse_image(
     Returns:
         dict: Processing result with order info and duplicate detection
     """
-    print(f"🖼️  Parsing image for job_id={job_id}")
+    logger.info("Parsing image for job_id=%s", job_id)
 
     # Mark job as started
     if DatabaseConnection.is_initialized():
@@ -304,8 +363,9 @@ async def handle_parse_image(
                 if existing_source and existing_source.order_id:
                     is_duplicate = True
                     existing_order_id = existing_source.order_id
-                    print(
-                        f"⚠️  Duplicate image detected, existing order: {existing_order_id}"
+                    logger.warning(
+                        "Duplicate image detected, existing order: %s",
+                        existing_order_id,
                     )
 
                     # Mark job as completed with duplicate info
@@ -380,7 +440,7 @@ Return structured data with confidence score. If information is unclear or missi
             output = result
 
         if not output.orders or len(output.orders) == 0:
-            print(f"⚠️  No orders found in image")
+            logger.warning("No orders found in image")
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(job_id, {"status": "no_orders_found"})
@@ -395,6 +455,35 @@ Return structured data with confidence score. If information is unclear or missi
         # Get the first extracted order
         extracted = output.orders[0]
 
+        # Reject low-confidence extractions
+        if extracted.confidence_score < MIN_ORDER_CONFIDENCE:
+            logger.warning(
+                "Low confidence (%.2f) for image order from %s, threshold=%.2f",
+                extracted.confidence_score,
+                extracted.merchant_name,
+                MIN_ORDER_CONFIDENCE,
+            )
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {
+                            "status": "low_confidence",
+                            "confidence_score": extracted.confidence_score,
+                            "threshold": MIN_ORDER_CONFIDENCE,
+                            "merchant_name": extracted.merchant_name,
+                        },
+                    )
+                    uow.commit()
+            return {
+                "status": "low_confidence",
+                "job_id": job_id,
+                "order_id": None,
+                "confidence_score": extracted.confidence_score,
+                "threshold": MIN_ORDER_CONFIDENCE,
+                "is_duplicate": False,
+            }
+
         # Convert to Order model
         order = convert_extracted_to_order(
             extracted=extracted,
@@ -403,9 +492,10 @@ Return structured data with confidence score. If information is unclear or missi
             source_id=source_id,
         )
 
-        print(
-            f"✅ Extracted order from image: merchant={order.merchant.name}, "
-            f"confidence={order.confidence_score}"
+        logger.info(
+            "Extracted order from image: merchant=%s, confidence=%.2f",
+            order.merchant.name,
+            order.confidence_score,
         )
 
         # Save to database if available
@@ -421,13 +511,36 @@ Return structured data with confidence score. If information is unclear or missi
                     support_url=order.merchant.support_url,
                     return_portal_url=order.merchant.return_portal_url,
                 )
+                logger.info(
+                    "Upserting merchant: name=%s, domain=%s",
+                    merchant_model.name,
+                    merchant_model.domain,
+                )
                 saved_merchant = uow.merchants.upsert_by_domain(merchant_model)
+                logger.info(
+                    "Merchant upsert result: id=%s, name=%s, domain=%s",
+                    saved_merchant.id,
+                    saved_merchant.name,
+                    saved_merchant.domain,
+                )
 
                 # Update order with persisted merchant ID
                 order.merchant.id = saved_merchant.id
 
                 # Upsert order (update existing or create new)
+                logger.info(
+                    "Upserting order: order_number=%s, merchant_id=%s, user_id=%s",
+                    order.order_number,
+                    order.merchant.id,
+                    order.user_id,
+                )
                 saved_order, is_new_order = uow.orders.upsert_by_order_number(order)
+                logger.info(
+                    "Order upsert result: id=%s, order_number=%s, is_new=%s",
+                    saved_order.id,
+                    saved_order.order_number,
+                    is_new_order,
+                )
 
                 # Mark source as processed (and store image hash)
                 uow.sources.mark_processed(source_id, saved_order.id)
@@ -449,7 +562,7 @@ Return structured data with confidence score. If information is unclear or missi
             order_id = order.id
 
         status = "created" if is_new_order else "updated"
-        print(f"✅ Order {status}: {order_id}")
+        logger.info("Order %s: %s", status, order_id)
 
         return {
             "status": status,
@@ -463,7 +576,7 @@ Return structured data with confidence score. If information is unclear or missi
         }
 
     except Exception as e:
-        print(f"❌ Image parsing error: {e}")
+        logger.exception("Image parsing error: %s", e)
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 uow.jobs.mark_failed(job_id, str(e))
@@ -492,8 +605,8 @@ async def handle_policy_refresh(
     Returns:
         dict: Processing result with policy info
     """
-    print(
-        f"🔄 Refreshing policy for merchant_id={merchant_id}, domain={merchant_domain}"
+    logger.info(
+        "Refreshing policy for merchant_id=%s, domain=%s", merchant_id, merchant_domain
     )
 
     # Mark job as started
@@ -514,7 +627,7 @@ async def handle_policy_refresh(
 
         # Discover candidate policy URLs
         candidate_urls = discover_policy_url(merchant_domain, support_url)
-        print(f"🔍 Candidate URLs: {candidate_urls}")
+        logger.info("Candidate URLs: %s", candidate_urls)
 
         # Try fetching from each candidate URL until success
         raw_html = None
@@ -523,17 +636,17 @@ async def handle_policy_refresh(
 
         for url in candidate_urls:
             try:
-                print(f"📥 Fetching from {url}")
+                logger.info("Fetching from %s", url)
                 raw_html, clean_text = fetch_policy_page(url, timeout=10)
                 source_url = url
-                print(f"✅ Successfully fetched from {url}")
+                logger.info("Successfully fetched from %s", url)
                 break
             except Exception as e:
-                print(f"⚠️  Failed to fetch from {url}: {e}")
+                logger.warning("Failed to fetch from %s: %s", url, e)
                 continue
 
         if not raw_html or not clean_text or not source_url:
-            print(f"❌ No policy URL found for {merchant_domain}")
+            logger.error("No policy URL found for %s", merchant_domain)
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(
@@ -559,7 +672,7 @@ async def handle_policy_refresh(
                     existing_hash = compute_sha256(existing_policy.raw_text.encode())
                     new_hash = compute_sha256(clean_text.encode())
                     if existing_hash == new_hash:
-                        print(f"✅ Policy unchanged (hash match), skipping update")
+                        logger.info("Policy unchanged (hash match), skipping update")
                         uow.jobs.mark_completed(
                             job_id,
                             {
@@ -578,7 +691,7 @@ async def handle_policy_refresh(
                         }
 
         # Extract policy using policy extractor agent
-        print(f"🤖 Extracting policy with agent")
+        logger.info("Extracting policy with agent")
 
         # Create prompt for policy extractor
         prompt = f"""Extract return and exchange policy information from this HTML content.
@@ -623,7 +736,7 @@ Extract all policy details including return windows, conditions, refund methods,
             output = result
 
         if not output.policies or len(output.policies) == 0:
-            print(f"⚠️  No policies found in content")
+            logger.warning("No policies found in content")
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(
@@ -666,9 +779,10 @@ Extract all policy details including return windows, conditions, refund methods,
                         }
                     )
 
-                    print(
-                        f"✅ Saved policy: type={saved_policy.policy_type.value}, "
-                        f"confidence={saved_policy.confidence_score}"
+                    logger.info(
+                        "Saved policy: type=%s, confidence=%s",
+                        saved_policy.policy_type.value,
+                        saved_policy.confidence_score,
                     )
 
                 # Mark job as completed
@@ -685,7 +799,9 @@ Extract all policy details including return windows, conditions, refund methods,
                 )
                 uow.commit()
 
-        print(f"✅ Policy refresh completed: {len(saved_policy_ids)} policies saved")
+        logger.info(
+            "Policy refresh completed: %d policies saved", len(saved_policy_ids)
+        )
 
         return {
             "status": "success",
@@ -699,7 +815,7 @@ Extract all policy details including return windows, conditions, refund methods,
         }
 
     except Exception as e:
-        print(f"❌ Policy refresh error: {e}")
+        logger.exception("Policy refresh error: %s", e)
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 uow.jobs.mark_failed(job_id, str(e))
