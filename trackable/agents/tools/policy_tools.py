@@ -1,8 +1,11 @@
 """Policy query tools for the chatbot agent."""
 
+import logging
 from datetime import datetime, timezone
 
 from trackable.db.unit_of_work import UnitOfWork
+
+logger = logging.getLogger(__name__)
 from trackable.models.policy import (
     ExchangeType,
     RefundMethod,
@@ -85,29 +88,42 @@ def get_return_policy(
     Returns:
         dict: Return policy details or error/not_found status.
     """
+    logger.info(
+        "get_return_policy called: merchant_name=%s, merchant_domain=%s, country_code=%s",
+        merchant_name,
+        merchant_domain,
+        country_code,
+    )
+
     if not merchant_name and not merchant_domain:
         return {
             "status": "error",
             "message": "Please provide a merchant name or domain to look up the policy.",
         }
 
-    with UnitOfWork() as uow:
-        # Look up merchant
-        merchant = uow.merchants.get_by_name_or_domain(
-            name=merchant_name, domain=merchant_domain
-        )
-        if merchant is None:
-            query = merchant_name or merchant_domain
-            return {
-                "status": "not_found",
-                "message": f"Merchant '{query}' not found in our database.",
-            }
+    try:
+        with UnitOfWork() as uow:
+            # Look up merchant
+            merchant = uow.merchants.get_by_name_or_domain(
+                name=merchant_name, domain=merchant_domain
+            )
+            logger.info("Merchant lookup result: %s", merchant)
+            if merchant is None:
+                query = merchant_name or merchant_domain
+                return {
+                    "status": "not_found",
+                    "message": f"Merchant '{query}' not found in our database.",
+                }
 
-        # Look up return policy
-        policy = uow.policies.get_return_policy_by_merchant(
-            merchant_id=merchant.id,
-            country_code=country_code,
-        )
+            # Look up return policy
+            policy = uow.policies.get_return_policy_by_merchant(
+                merchant_id=merchant.id,
+                country_code=country_code,
+            )
+            logger.info("Policy lookup result: %s", policy)
+    except Exception as e:
+        logger.exception("Error in get_return_policy: %s", e)
+        raise
 
     if policy is None:
         return {
