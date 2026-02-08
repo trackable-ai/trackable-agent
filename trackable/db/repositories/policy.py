@@ -109,6 +109,62 @@ class PolicyRepository(BaseRepository[Policy]):
 
         return self._row_to_model(row)
 
+    def get_return_policy_by_merchant(
+        self, merchant_id: str, country_code: str = "US"
+    ) -> Policy | None:
+        """
+        Get policy with return policy data for a merchant.
+
+        Finds the first policy row where return_policy JSON is populated,
+        regardless of policy_type. This handles cases where return and
+        exchange data are stored in the same row.
+
+        Args:
+            merchant_id: Merchant ID
+            country_code: Country code (default: "US")
+
+        Returns:
+            Policy with return_policy populated, or None
+        """
+        stmt = select(self.table).where(
+            self.table.c.merchant_id == UUID(merchant_id),
+            self.table.c.country_code == country_code,
+            self.table.c.return_policy.isnot(None),
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+        if row is None:
+            return None
+        return self._row_to_model(row)
+
+    def get_exchange_policy_by_merchant(
+        self, merchant_id: str, country_code: str = "US"
+    ) -> Policy | None:
+        """
+        Get policy with exchange policy data for a merchant.
+
+        Finds the first policy row where exchange_policy JSON is populated,
+        regardless of policy_type. This handles cases where return and
+        exchange data are stored in the same row.
+
+        Args:
+            merchant_id: Merchant ID
+            country_code: Country code (default: "US")
+
+        Returns:
+            Policy with exchange_policy populated, or None
+        """
+        stmt = select(self.table).where(
+            self.table.c.merchant_id == UUID(merchant_id),
+            self.table.c.country_code == country_code,
+            self.table.c.exchange_policy.isnot(None),
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+        if row is None:
+            return None
+        return self._row_to_model(row)
+
     def list_by_merchant(self, merchant_id: str) -> list[Policy]:
         """
         Get all policies for a merchant.

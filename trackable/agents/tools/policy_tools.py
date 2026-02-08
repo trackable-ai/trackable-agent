@@ -5,7 +5,6 @@ from datetime import datetime, timezone
 from trackable.db.unit_of_work import UnitOfWork
 from trackable.models.policy import (
     ExchangeType,
-    PolicyType,
     RefundMethod,
     ReturnCondition,
     ReturnShippingResponsibility,
@@ -105,9 +104,8 @@ def get_return_policy(
             }
 
         # Look up return policy
-        policy = uow.policies.get_by_merchant(
+        policy = uow.policies.get_return_policy_by_merchant(
             merchant_id=merchant.id,
-            policy_type=PolicyType.RETURN,
             country_code=country_code,
         )
 
@@ -188,9 +186,8 @@ def get_exchange_policy(
             }
 
         # Look up exchange policy
-        policy = uow.policies.get_by_merchant(
+        policy = uow.policies.get_exchange_policy_by_merchant(
             merchant_id=merchant.id,
-            policy_type=PolicyType.EXCHANGE,
             country_code=country_code,
         )
 
@@ -263,14 +260,12 @@ def get_policy_for_order(
         country_code = "US"  # TODO: Add country_code field to Order model
 
         # Look up both policies
-        return_policy = uow.policies.get_by_merchant(
+        return_policy = uow.policies.get_return_policy_by_merchant(
             merchant_id=order.merchant.id,
-            policy_type=PolicyType.RETURN,
             country_code=country_code,
         )
-        exchange_policy = uow.policies.get_by_merchant(
+        exchange_policy = uow.policies.get_exchange_policy_by_merchant(
             merchant_id=order.merchant.id,
-            policy_type=PolicyType.EXCHANGE,
             country_code=country_code,
         )
 

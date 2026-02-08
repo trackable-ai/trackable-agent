@@ -171,7 +171,7 @@ class TestGetReturnPolicy:
         )
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         # Test function
         result = get_return_policy(merchant_name="Nike")
@@ -200,9 +200,8 @@ class TestGetReturnPolicy:
         mock_uow.merchants.get_by_name_or_domain.assert_called_once_with(
             name="Nike", domain=None
         )
-        mock_uow.policies.get_by_merchant.assert_called_once_with(
+        mock_uow.policies.get_return_policy_by_merchant.assert_called_once_with(
             merchant_id="merch-123",
-            policy_type=PolicyType.RETURN,
             country_code="US",
         )
 
@@ -216,7 +215,7 @@ class TestGetReturnPolicy:
         policy = _make_return_policy()
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         result = get_return_policy(merchant_domain="nike.com")
 
@@ -245,7 +244,7 @@ class TestGetReturnPolicy:
 
         merchant = _make_merchant()
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = None
+        mock_uow.policies.get_return_policy_by_merchant.return_value = None
 
         result = get_return_policy(merchant_name="Nike")
 
@@ -269,7 +268,7 @@ class TestGetReturnPolicy:
         )
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         result = get_return_policy(merchant_name="Nike")
 
@@ -297,7 +296,7 @@ class TestGetReturnPolicy:
         )
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         result = get_return_policy(merchant_name="Nike")
 
@@ -314,7 +313,7 @@ class TestGetReturnPolicy:
         policy = _make_return_policy(restocking_fee=15.0)
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         result = get_return_policy(merchant_name="Nike")
 
@@ -331,15 +330,14 @@ class TestGetReturnPolicy:
         policy = _make_return_policy()
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_return_policy_by_merchant.return_value = policy
 
         result = get_return_policy(merchant_name="Nike", country_code="GB")
 
         assert result["status"] == "success"
         assert result["country"] == "GB"
-        mock_uow.policies.get_by_merchant.assert_called_once_with(
+        mock_uow.policies.get_return_policy_by_merchant.assert_called_once_with(
             merchant_id="merch-123",
-            policy_type=PolicyType.RETURN,
             country_code="GB",
         )
 
@@ -362,7 +360,7 @@ class TestGetExchangePolicy:
         )
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = policy
 
         result = get_exchange_policy(merchant_name="Nike")
 
@@ -404,7 +402,7 @@ class TestGetExchangePolicy:
 
         merchant = _make_merchant()
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = None
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = None
 
         result = get_exchange_policy(merchant_name="Nike")
 
@@ -428,7 +426,7 @@ class TestGetExchangePolicy:
         )
 
         mock_uow.merchants.get_by_name_or_domain.return_value = merchant
-        mock_uow.policies.get_by_merchant.return_value = policy
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = policy
 
         result = get_exchange_policy(merchant_name="Nike")
 
@@ -464,10 +462,8 @@ class TestGetPolicyForOrder:
         exchange_policy = _make_exchange_policy(merchant_id=merchant.id)
 
         mock_uow.orders.get_by_id_for_user.return_value = order
-        mock_uow.policies.get_by_merchant.side_effect = [
-            return_policy,
-            exchange_policy,
-        ]
+        mock_uow.policies.get_return_policy_by_merchant.return_value = return_policy
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = exchange_policy
 
         result = get_policy_for_order(user_id="user-123", order_id="order-123")
 
@@ -500,7 +496,14 @@ class TestGetPolicyForOrder:
         mock_uow.orders.get_by_id_for_user.assert_called_once_with(
             "order-123", "user-123"
         )
-        assert mock_uow.policies.get_by_merchant.call_count == 2
+        mock_uow.policies.get_return_policy_by_merchant.assert_called_once_with(
+            merchant_id="merch-123",
+            country_code="US",
+        )
+        mock_uow.policies.get_exchange_policy_by_merchant.assert_called_once_with(
+            merchant_id="merch-123",
+            country_code="US",
+        )
 
     @patch("trackable.agents.tools.policy_tools.UnitOfWork")
     def test_order_not_found(self, mock_uow_cls):
@@ -528,10 +531,8 @@ class TestGetPolicyForOrder:
         return_policy = _make_return_policy(merchant_id=merchant.id)
 
         mock_uow.orders.get_by_id_for_user.return_value = order
-        mock_uow.policies.get_by_merchant.side_effect = [
-            return_policy,
-            None,  # No exchange policy
-        ]
+        mock_uow.policies.get_return_policy_by_merchant.return_value = return_policy
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = None
 
         result = get_policy_for_order(user_id="user-123", order_id="order-123")
 
@@ -549,7 +550,8 @@ class TestGetPolicyForOrder:
         order = _make_order(merchant=merchant)
 
         mock_uow.orders.get_by_id_for_user.return_value = order
-        mock_uow.policies.get_by_merchant.side_effect = [None, None]
+        mock_uow.policies.get_return_policy_by_merchant.return_value = None
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = None
 
         result = get_policy_for_order(user_id="user-123", order_id="order-123")
 
@@ -572,7 +574,8 @@ class TestGetPolicyForOrder:
         return_policy = _make_return_policy(merchant_id=merchant.id)
 
         mock_uow.orders.get_by_id_for_user.return_value = order
-        mock_uow.policies.get_by_merchant.side_effect = [return_policy, None]
+        mock_uow.policies.get_return_policy_by_merchant.return_value = return_policy
+        mock_uow.policies.get_exchange_policy_by_merchant.return_value = None
 
         result = get_policy_for_order(user_id="user-123", order_id="order-123")
 

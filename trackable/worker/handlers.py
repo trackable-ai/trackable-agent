@@ -21,7 +21,6 @@ from trackable.agents.policy_extractor import (
 )
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import Merchant, SourceType
-from trackable.models.policy import PolicyType
 from trackable.utils.hash import compute_sha256
 from trackable.utils.web_scraper import discover_policy_url, fetch_policy_page
 
@@ -552,9 +551,9 @@ async def handle_policy_refresh(
         # Check if content has changed using hash (skip if force_refresh)
         if not force_refresh and DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
-                # Get existing policy for this merchant (default to RETURN type)
-                existing_policy = uow.policies.get_by_merchant(
-                    merchant_id, PolicyType.RETURN, "US"
+                # Get existing policy for this merchant (check return_policy data)
+                existing_policy = uow.policies.get_return_policy_by_merchant(
+                    merchant_id, "US"
                 )
                 if existing_policy and existing_policy.raw_text:
                     existing_hash = compute_sha256(existing_policy.raw_text.encode())
