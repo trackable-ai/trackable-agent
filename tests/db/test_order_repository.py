@@ -6,10 +6,12 @@ These tests verify the order merge logic without requiring a database connection
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from typing import cast
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
+from pydantic import HttpUrl
 
 from trackable.db.repositories.order import ORDER_STATUS_PROGRESSION, OrderRepository
 from trackable.models.order import (
@@ -386,8 +388,8 @@ class TestMergeOrders:
             order_number=existing.order_number,
             status=existing.status,
             source_type=SourceType.EMAIL,
-            order_url="https://example.com/order/123",
-            receipt_url="https://example.com/receipt/123",
+            order_url=HttpUrl("https://example.com/order/123"),
+            receipt_url=HttpUrl("https://example.com/receipt/123"),
             created_at=datetime.now(timezone.utc),
             updated_at=datetime.now(timezone.utc),
         )
@@ -591,6 +593,8 @@ def _make_mock_row(**overrides) -> MagicMock:
         "id": uuid4(),
         "user_id": uuid4(),
         "merchant_id": uuid4(),
+        "merchant_name": "Test Merchant",
+        "merchant_domain": "testmerchant.com",
         "order_number": "ORD-001",
         "order_date": datetime.now(timezone.utc),
         "status": "detected",
@@ -660,23 +664,21 @@ class TestGetLatestOrder:
 class TestGetByUserDeduplicated:
     def test_default_uses_distinct_on(self, order_repo: OrderRepository):
         """Default get_by_user uses DISTINCT ON for deduplication."""
-        order_repo.session.execute.return_value.fetchall.return_value = []
+        mock_execute = cast(MagicMock, order_repo.session.execute)
+        mock_execute.return_value.fetchall.return_value = []
         order_repo.get_by_user(user_id=str(uuid4()))
         compiled = str(
-            order_repo.session.execute.call_args[0][0].compile(
-                compile_kwargs={"literal_binds": True}
-            )
+            mock_execute.call_args[0][0].compile(compile_kwargs={"literal_binds": True})
         )
         assert "distinct" in compiled.lower()
 
     def test_include_history_skips_distinct(self, order_repo: OrderRepository):
         """include_history=True returns all rows without DISTINCT ON."""
-        order_repo.session.execute.return_value.fetchall.return_value = []
+        mock_execute = cast(MagicMock, order_repo.session.execute)
+        mock_execute.return_value.fetchall.return_value = []
         order_repo.get_by_user(user_id=str(uuid4()), include_history=True)
         compiled = str(
-            order_repo.session.execute.call_args[0][0].compile(
-                compile_kwargs={"literal_binds": True}
-            )
+            mock_execute.call_args[0][0].compile(compile_kwargs={"literal_binds": True})
         )
         assert "distinct" not in compiled.lower()
 
@@ -684,12 +686,11 @@ class TestGetByUserDeduplicated:
 class TestGetByOrderNumberLatest:
     def test_uses_status_ordering(self, order_repo: OrderRepository):
         """get_by_order_number sorts by status progression DESC."""
-        order_repo.session.execute.return_value.fetchone.return_value = None
+        mock_execute = cast(MagicMock, order_repo.session.execute)
+        mock_execute.return_value.fetchone.return_value = None
         order_repo.get_by_order_number(str(uuid4()), "ORD-001")
         compiled = str(
-            order_repo.session.execute.call_args[0][0].compile(
-                compile_kwargs={"literal_binds": True}
-            )
+            mock_execute.call_args[0][0].compile(compile_kwargs={"literal_binds": True})
         )
         assert "limit" in compiled.lower()
         assert "case" in compiled.lower()

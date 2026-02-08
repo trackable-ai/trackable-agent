@@ -42,12 +42,43 @@ class OrderRepository(BaseRepository[Order]):
     def table(self) -> Table:
         return orders
 
+    def get_by_id(self, id: UUID | str) -> Order | None:
+        """
+        Get order by ID with merchant data.
+
+        Args:
+            id: UUID of the order
+
+        Returns:
+            Order model or None if not found
+        """
+        if isinstance(id, str):
+            id = UUID(id)
+
+        stmt = (
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
+            .where(self.table.c.id == id)
+        )
+        result = self.session.execute(stmt)
+        row = result.fetchone()
+
+        if row is None:
+            return None
+
+        return self._row_to_model(row)
+
     def _row_to_model(self, row: Any) -> Order:
         """Convert database row to Order model."""
-        # Reconstruct Merchant (minimal - need merchant repo for full data)
+        # Reconstruct Merchant from row data (populated via JOIN with merchants table)
         merchant = Merchant(
             id=str(row.merchant_id),
-            name="",  # Will be populated from merchant table if needed
+            name=getattr(row, "merchant_name", ""),
+            domain=getattr(row, "merchant_domain", None),
         )
 
         return Order(
@@ -148,7 +179,15 @@ class OrderRepository(BaseRepository[Order]):
             List of orders
         """
         if include_history:
-            stmt = select(self.table).where(self.table.c.user_id == UUID(user_id))
+            stmt = (
+                select(
+                    self.table,
+                    merchants.c.name.label("merchant_name"),
+                    merchants.c.domain.label("merchant_domain"),
+                )
+                .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
+                .where(self.table.c.user_id == UUID(user_id))
+            )
             if status:
                 stmt = stmt.where(self.table.c.status == status.value)
             stmt = (
@@ -159,7 +198,12 @@ class OrderRepository(BaseRepository[Order]):
         else:
             status_order = self._status_order_expression()
             stmt = (
-                select(self.table)
+                select(
+                    self.table,
+                    merchants.c.name.label("merchant_name"),
+                    merchants.c.domain.label("merchant_domain"),
+                )
+                .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
                 .distinct(
                     self.table.c.user_id,
                     self.table.c.merchant_id,
@@ -175,7 +219,15 @@ class OrderRepository(BaseRepository[Order]):
             )
             if status:
                 subq = stmt.subquery()
-                stmt = select(subq).where(subq.c.status == status.value)
+                stmt = (
+                    select(
+                        subq,
+                        merchants.c.name.label("merchant_name"),
+                        merchants.c.domain.label("merchant_domain"),
+                    )
+                    .outerjoin(merchants, subq.c.merchant_id == merchants.c.id)
+                    .where(subq.c.status == status.value)
+                )
             stmt = stmt.limit(limit).offset(offset)
 
         result = self.session.execute(stmt)
@@ -253,7 +305,12 @@ class OrderRepository(BaseRepository[Order]):
         """
         status_order = self._status_order_expression()
         stmt = (
-            select(self.table)
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
             .where(
                 self.table.c.id == UUID(order_id),
                 self.table.c.user_id == UUID(user_id),
@@ -285,7 +342,12 @@ class OrderRepository(BaseRepository[Order]):
         """
         status_order = self._status_order_expression()
         stmt = (
-            select(self.table)
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
             .where(
                 self.table.c.user_id == UUID(user_id),
                 self.table.c.order_number == order_number,
@@ -326,7 +388,7 @@ class OrderRepository(BaseRepository[Order]):
                 merchants.c.name.label("merchant_name"),
                 merchants.c.domain.label("merchant_domain"),
             )
-            .join(merchants, self.table.c.merchant_id == merchants.c.id)
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
             .where(self.table.c.user_id == UUID(user_id))
             .where(
                 or_(
@@ -343,13 +405,7 @@ class OrderRepository(BaseRepository[Order]):
         )
 
         result = self.session.execute(stmt, {"item_pattern": pattern})
-        results = []
-        for row in result.fetchall():
-            order = self._row_to_model(row)
-            order.merchant.name = row.merchant_name
-            order.merchant.domain = row.merchant_domain
-            results.append(order)
-        return results
+        return [self._row_to_model(row) for row in result.fetchall()]
 
     def get_monitored_orders(self, user_id: str | None = None) -> list[Order]:
         """
@@ -361,7 +417,15 @@ class OrderRepository(BaseRepository[Order]):
         Returns:
             List of monitored orders
         """
-        stmt = select(self.table).where(self.table.c.is_monitored == True)  # noqa: E712
+        stmt = (
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
+            .where(self.table.c.is_monitored == True)  # noqa: E712
+        )
 
         if user_id:
             stmt = stmt.where(self.table.c.user_id == UUID(user_id))
@@ -389,11 +453,19 @@ class OrderRepository(BaseRepository[Order]):
         now = datetime.now(timezone.utc)
         expiry_threshold = now + timedelta(days=days_until_expiry)
 
-        stmt = select(self.table).where(
-            self.table.c.is_monitored == True,  # noqa: E712
-            self.table.c.return_window_end.isnot(None),
-            self.table.c.return_window_end <= expiry_threshold,
-            self.table.c.return_window_end > now,
+        stmt = (
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
+            .where(
+                self.table.c.is_monitored == True,  # noqa: E712
+                self.table.c.return_window_end.isnot(None),
+                self.table.c.return_window_end <= expiry_threshold,
+                self.table.c.return_window_end > now,
+            )
         )
 
         if user_id:
@@ -474,7 +546,15 @@ class OrderRepository(BaseRepository[Order]):
         if status is not None:
             conditions.append(self.table.c.status == status.value)
 
-        stmt = select(self.table).where(and_(*conditions))
+        stmt = (
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
+            .where(and_(*conditions))
+        )
         result = self.session.execute(stmt)
         row = result.fetchone()
 
@@ -642,7 +722,12 @@ class OrderRepository(BaseRepository[Order]):
         """Get all status rows for an order, ordered by status progression."""
         status_order = self._status_order_expression()
         stmt = (
-            select(self.table)
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
             .where(
                 and_(
                     self.table.c.user_id == UUID(user_id),
@@ -661,7 +746,12 @@ class OrderRepository(BaseRepository[Order]):
         """Get the highest-status row for an order."""
         status_order = self._status_order_expression()
         stmt = (
-            select(self.table)
+            select(
+                self.table,
+                merchants.c.name.label("merchant_name"),
+                merchants.c.domain.label("merchant_domain"),
+            )
+            .outerjoin(merchants, self.table.c.merchant_id == merchants.c.id)
             .where(
                 and_(
                     self.table.c.user_id == UUID(user_id),

@@ -177,6 +177,8 @@ def check_return_windows(user_id: str, days_ahead: int = 14) -> dict:
 
     expiring = []
     for order in orders:
+        if order.return_window_end is None:
+            continue
         days_remaining = (order.return_window_end - now).days
         item_names = [item.name for item in order.items]
         expiring.append(
