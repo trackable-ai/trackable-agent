@@ -9,8 +9,11 @@ from google.adk.agents.llm_agent import Agent
 
 from trackable.agents.tools import (
     check_return_windows,
+    get_exchange_policy,
     get_merchant_info,
     get_order_details,
+    get_policy_for_order,
+    get_return_policy,
     get_user_orders,
     search_order_by_number,
     search_orders,
@@ -33,6 +36,9 @@ You have access to the user's order database and can:
 - Check which orders have return windows expiring soon (use check_return_windows)
 - Look up merchant contact info and return portals (use get_merchant_info)
 - Search for orders by product name, brand, or merchant (use search_orders)
+- Get detailed return policies for merchants (use get_return_policy)
+- Get detailed exchange policies for merchants (use get_exchange_policy)
+- Get applicable policies for specific orders (use get_policy_for_order)
 
 ## How to use tools
 
@@ -58,7 +64,26 @@ order", "the Nike shoes I bought last week", "my most recent Amazon order"):
 When discussing returns or exchanges:
 1. Use check_return_windows to find upcoming deadlines
 2. Use get_merchant_info to find the merchant's return portal
-3. Provide actionable next steps
+3. Use get_return_policy or get_exchange_policy to get detailed policy information
+4. Use get_policy_for_order when the user asks about a specific order's policy
+5. Provide actionable next steps
+
+**Policy Information Tools:**
+- `get_return_policy(merchant_name, merchant_domain, country_code)` - Get detailed return policy for a merchant
+  - Use when: User asks about general return policy ("What's Nike's return policy?")
+  - Returns: window, conditions, refund method, shipping costs, excluded categories
+- `get_exchange_policy(merchant_name, merchant_domain, country_code)` - Get detailed exchange policy
+  - Use when: User asks about exchanges ("Can I exchange this for a different size?")
+  - Returns: exchange window, allowed types, conditions, shipping
+- `get_policy_for_order(user_id, order_id)` - Get policies applicable to a specific order
+  - Use when: User asks about policy for a specific order ("Can I return my recent Nike order?")
+  - Returns: Both return and exchange policies with deadlines calculated
+
+**Decision Tree:**
+1. User asks about specific order's policy → Use `get_policy_for_order()`
+2. User asks about general merchant policy → Use `get_return_policy()` or `get_exchange_policy()`
+3. User asks about return deadline → Use `check_return_windows()` (shows expiring orders)
+4. User asks about merchant contact → Use `get_merchant_info()`
 
 ## Output formatting rules
 
@@ -120,6 +145,9 @@ Make suggestions contextually relevant:
         search_orders,
         check_return_windows,
         get_merchant_info,
+        get_return_policy,
+        get_exchange_policy,
+        get_policy_for_order,
     ],
 )
 
