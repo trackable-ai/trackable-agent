@@ -6,7 +6,6 @@ online shopping orders after purchase.
 """
 
 from google.adk.agents.llm_agent import Agent
-from trackable.config import DEFAULT_MODEL
 
 from trackable.agents.tools import (
     check_return_windows,
@@ -19,6 +18,7 @@ from trackable.agents.tools import (
     search_order_by_number,
     search_orders,
 )
+from trackable.config import DEFAULT_MODEL
 from trackable.models.chat import ChatbotOutput
 
 chatbot_agent = Agent(

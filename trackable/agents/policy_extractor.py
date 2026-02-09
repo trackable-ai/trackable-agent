@@ -10,8 +10,8 @@ from uuid import uuid4
 
 from google.adk.agents.llm_agent import Agent
 from pydantic import BaseModel, Field
-from trackable.config import DEFAULT_MODEL
 
+from trackable.config import DEFAULT_MODEL
 from trackable.models.policy import (
     ExchangePolicy,
     ExchangeType,
