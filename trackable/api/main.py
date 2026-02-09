@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 
+from trackable.config import DEFAULT_MODEL
 from trackable.utils.logging import setup_logging
 
 # Load environment variables
@@ -45,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Startup
     print("🚀 Starting Trackable Ingress API...")
     print(f"   Environment: {os.getenv('GOOGLE_CLOUD_PROJECT', 'local')}")
-    print(f"   Model: gemini-2.5-flash")
+    print(f"   Model: {DEFAULT_MODEL}")
 
     db_initialized = _init_database()
 
