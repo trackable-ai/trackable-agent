@@ -92,8 +92,8 @@ def test_fetch_policy_page_timeout(mock_get):
 
 
 @patch("trackable.utils.web_scraper.requests.get")
-def test_fetch_policy_page_user_agent(mock_get):
-    """Test that fetch includes User-Agent header"""
+def test_fetch_policy_page_uses_browser_impersonation(mock_get):
+    """Test that fetch uses curl_cffi browser impersonation"""
     mock_response = Mock()
     mock_response.text = "<html><body>Test</body></html>"
     mock_response.raise_for_status = Mock()
@@ -101,11 +101,6 @@ def test_fetch_policy_page_user_agent(mock_get):
 
     fetch_policy_page("https://example.com/returns")
 
-    # Verify User-Agent header was set (realistic browser User-Agent to avoid blocking)
+    # Verify browser impersonation is used (bypasses anti-bot protection)
     call_args = mock_get.call_args
-    assert "headers" in call_args.kwargs
-    assert "User-Agent" in call_args.kwargs["headers"]
-    assert "Mozilla" in call_args.kwargs["headers"]["User-Agent"]
-    # Should also have other browser-like headers
-    assert "Accept" in call_args.kwargs["headers"]
-    assert "Accept-Language" in call_args.kwargs["headers"]
+    assert call_args.kwargs["impersonate"] == "chrome"
