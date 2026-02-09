@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from trackable.api.main import app
+from trackable.config import DEFAULT_MODEL
 
 pytest_plugins = ("pytest_asyncio",)
 
@@ -54,7 +55,7 @@ class TestChatCompletions:
         response = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": "Hello! What is Trackable?"}],
                 "user": "test_user",
             },
@@ -91,7 +92,7 @@ class TestChatCompletions:
         response = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [
                     {
                         "role": "system",
@@ -113,7 +114,7 @@ class TestChatCompletions:
         response1 = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": "My name is Alice."}],
                 "user": "test_user_conv",
             },
@@ -124,7 +125,7 @@ class TestChatCompletions:
         response2 = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": "What is my name?"}],
                 "user": "test_user_conv",
             },
@@ -144,7 +145,7 @@ class TestChatCompletionsStreaming:
             "POST",
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": "Say hello in one word."}],
                 "stream": True,
                 "user": "test_user",
@@ -187,7 +188,7 @@ class TestChatCompletionsStreaming:
             "POST",
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "user", "content": "Count from 1 to 3."}],
                 "stream": True,
             },
@@ -237,7 +238,7 @@ class TestChatCompletionsValidation:
         response = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [],
             },
         )
@@ -249,7 +250,7 @@ class TestChatCompletionsValidation:
         response = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
             },
         )
         assert response.status_code == 422
@@ -259,7 +260,7 @@ class TestChatCompletionsValidation:
         response = client.post(
             "/api/v1/chat/completions",
             json={
-                "model": "gemini-2.5-flash",
+                "model": DEFAULT_MODEL,
                 "messages": [{"role": "invalid_role", "content": "Hello"}],
             },
         )
