@@ -249,6 +249,10 @@ class TestPolicyRefreshHandler:
             # Verify tasks were created for each merchant
             assert mock_create_task.call_count == 2
 
+            # Verify job_id was passed to create_policy_refresh_task
+            for call in mock_create_task.call_args_list:
+                assert "job_id" in call.kwargs
+
     def test_policy_refresh_specific_merchants(self, client: TestClient) -> None:
         """Test policy refresh for specific merchants."""
         mock_merchant = Merchant(id="m1", name="Amazon", domain="amazon.com")
@@ -280,6 +284,10 @@ class TestPolicyRefreshHandler:
             data = response.json()
             assert data["status"] == "queued"
             assert data["tasks_created"] == 1
+
+            # Verify job_id was passed to create_policy_refresh_task
+            call_kwargs = mock_create_task.call_args.kwargs
+            assert "job_id" in call_kwargs
 
     def test_policy_refresh_no_merchants(self, client: TestClient) -> None:
         """Test policy refresh when no merchants exist."""
