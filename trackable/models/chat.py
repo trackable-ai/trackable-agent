@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from trackable.config import DEFAULT_MODEL
+
 
 class MessageRole(str, Enum):
     """Role of a message in a conversation."""
@@ -32,7 +34,7 @@ class ChatCompletionRequest(BaseModel):
     """OpenAI-compatible chat completion request."""
 
     model: str = Field(
-        default="gemini-2.5-flash",
+        default=DEFAULT_MODEL,
         description="Model to use for completion (ignored, uses configured agent model)",
     )
     messages: list[ChatMessage] = Field(
@@ -97,7 +99,7 @@ class ChatCompletionResponse(BaseModel):
     id: str = Field(default_factory=lambda: f"chatcmpl-{uuid.uuid4().hex[:12]}")
     object: Literal["chat.completion"] = "chat.completion"
     created: int = Field(default_factory=lambda: int(time.time()))
-    model: str = "gemini-2.5-flash"
+    model: str = DEFAULT_MODEL
     choices: list[ChatCompletionChoice]
     usage: ChatCompletionUsage = Field(default_factory=ChatCompletionUsage)
     # Trackable extension: suggested next actions for the frontend
@@ -131,7 +133,7 @@ class ChatCompletionChunk(BaseModel):
     id: str
     object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
     created: int
-    model: str = "gemini-2.5-flash"
+    model: str = DEFAULT_MODEL
     choices: list[ChatCompletionChunkChoice]
     # Trackable extension: included in the final chunk (finish_reason="stop")
     suggestions: list[Suggestion] | None = Field(
