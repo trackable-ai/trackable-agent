@@ -183,51 +183,19 @@ async def policy_refresh_task(task: PolicyRefreshTask):
     Scheduled periodically by Cloud Scheduler or triggered manually.
 
     Args:
-        task: Policy refresh task payload
+        task: Policy refresh task payload (includes job_id created by caller)
 
     Returns:
         dict: Processing result with policy info
-
-    Flow:
-        1. Create job record for tracking
-        2. Fetch merchant from database
-        3. Discover policy URL from merchant domain/support_url
-        4. Fetch policy page HTML
-        5. Check if content changed (hash comparison)
-        6. Extract policy using policy_extractor_agent
-        7. Save policy to database (upsert)
-        8. Mark job as completed
     """
     try:
         print(
-            f"🔄 Processing policy refresh task: merchant_id={task.merchant_id}, "
-            f"domain={task.merchant_domain}"
+            f"🔄 Processing policy refresh task: job_id={task.job_id}, "
+            f"merchant_id={task.merchant_id}, domain={task.merchant_domain}"
         )
 
-        # Create job for this policy refresh
-        from trackable.db import DatabaseConnection, UnitOfWork
-        from trackable.models.job import Job, JobType
-
-        job_id = None
-        if DatabaseConnection.is_initialized():
-            with UnitOfWork() as uow:
-                job = Job(
-                    id="",  # Will be generated
-                    job_type=JobType.POLICY_REFRESH,
-                    user_id=None,  # System job
-                    source_id=None,
-                    metadata={
-                        "merchant_id": task.merchant_id,
-                        "merchant_domain": task.merchant_domain,
-                        "force_refresh": task.force_refresh,
-                    },
-                )
-                created_job = uow.jobs.create(job)
-                job_id = created_job.id
-                uow.commit()
-
         result = await handle_policy_refresh(
-            job_id=job_id,
+            job_id=task.job_id,
             merchant_id=task.merchant_id,
             merchant_domain=task.merchant_domain,
             force_refresh=task.force_refresh,
@@ -237,6 +205,7 @@ async def policy_refresh_task(task: PolicyRefreshTask):
 
         return {
             "status": "success",
+            "job_id": task.job_id,
             "merchant_id": task.merchant_id,
             "result": result,
         }
