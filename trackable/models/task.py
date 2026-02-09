@@ -44,6 +44,7 @@ class ParseImageTask(BaseModel):
 class PolicyRefreshTask(BaseModel):
     """Policy refresh task payload"""
 
+    job_id: str = Field(description="Job ID in database")
     merchant_id: str = Field(description="Merchant ID to refresh policy for")
     merchant_domain: str = Field(description="Merchant domain for logging")
     force_refresh: bool = Field(
