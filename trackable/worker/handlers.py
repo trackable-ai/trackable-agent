@@ -28,7 +28,7 @@ from trackable.agents.policy_extractor import (
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import Merchant, SourceType
 from trackable.utils.hash import compute_sha256
-from trackable.utils.web_scraper import discover_policy_url, fetch_policy_page
+from trackable.utils.web_scraper import fetch_policy_page
 
 # Create runner for input processor agent
 input_processor_runner = InMemoryRunner(
@@ -620,20 +620,35 @@ async def handle_policy_refresh(
             uow.commit()
 
     try:
-        # Fetch merchant from database to get support_url
+        # Fetch merchant from database
         merchant = None
-        support_url = None
         if DatabaseConnection.is_initialized():
             with UnitOfWork() as uow:
                 merchant = uow.merchants.get_by_id(merchant_id)
-                if merchant and merchant.support_url:
-                    support_url = str(merchant.support_url)
 
-        # Discover candidate policy URLs
-        candidate_urls = discover_policy_url(merchant_domain, support_url)
-        logger.info("Candidate URLs: %s", candidate_urls)
+        if not merchant or not merchant.policy_urls:
+            logger.info("No policy URLs configured for %s", merchant_domain)
+            if DatabaseConnection.is_initialized():
+                with UnitOfWork() as uow:
+                    uow.jobs.mark_completed(
+                        job_id,
+                        {
+                            "status": "no_policy_urls",
+                            "merchant_domain": merchant_domain,
+                        },
+                    )
+                    uow.commit()
+            return {
+                "status": "no_policy_urls",
+                "job_id": job_id,
+                "merchant_id": merchant_id,
+                "merchant_domain": merchant_domain,
+            }
 
-        # Try fetching from each candidate URL until success
+        # Try fetching from configured policy URLs
+        candidate_urls = merchant.policy_urls
+        logger.info("Policy URLs for %s: %s", merchant_domain, candidate_urls)
+
         raw_html = None
         clean_text = None
         source_url = None
@@ -650,16 +665,16 @@ async def handle_policy_refresh(
                 continue
 
         if not raw_html or not clean_text or not source_url:
-            logger.error("No policy URL found for %s", merchant_domain)
+            logger.info("Failed to fetch from any policy URL for %s", merchant_domain)
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(
                         job_id,
-                        {"status": "no_policy_url", "attempted_urls": candidate_urls},
+                        {"status": "fetch_failed", "attempted_urls": candidate_urls},
                     )
                     uow.commit()
             return {
-                "status": "no_policy_url",
+                "status": "fetch_failed",
                 "job_id": job_id,
                 "merchant_id": merchant_id,
                 "attempted_urls": candidate_urls,

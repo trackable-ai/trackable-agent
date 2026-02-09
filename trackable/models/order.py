@@ -81,6 +81,10 @@ class Merchant(BaseModel):
     return_portal_url: Optional[HttpUrl] = Field(
         default=None, description="Return portal URL"
     )
+    policy_urls: list[str] = Field(
+        default_factory=list,
+        description="URLs to return/exchange policy pages",
+    )
 
 
 class Item(BaseModel):

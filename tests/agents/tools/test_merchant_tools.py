@@ -41,6 +41,7 @@ class TestGetMerchantInfo:
         assert result["merchant"]["name"] == "Nike"
         assert result["merchant"]["domain"] == "nike.com"
         assert result["merchant"]["support_email"] == "support@nike.com"
+        assert result["merchant"]["policy_urls"] == []
 
     @patch("trackable.agents.tools.merchant_tools.UnitOfWork")
     def test_finds_merchant_by_domain(self, mock_uow_cls: MagicMock):
@@ -56,6 +57,7 @@ class TestGetMerchantInfo:
         result = get_merchant_info(merchant_domain="nike.com")
 
         assert result["status"] == "success"
+        assert result["merchant"]["policy_urls"] == []
 
     @patch("trackable.agents.tools.merchant_tools.UnitOfWork")
     def test_returns_not_found(self, mock_uow_cls: MagicMock):

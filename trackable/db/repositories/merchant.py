@@ -38,6 +38,7 @@ class MerchantRepository(BaseRepository[Merchant]):
             support_email=row.support_email,
             support_url=row.support_url,
             return_portal_url=row.return_portal_url,
+            policy_urls=row.policy_urls or [],
         )
 
     def _model_to_dict(self, model: Merchant) -> dict:
@@ -53,6 +54,7 @@ class MerchantRepository(BaseRepository[Merchant]):
             "return_portal_url": (
                 str(model.return_portal_url) if model.return_portal_url else None
             ),
+            "policy_urls": model.policy_urls,
             "created_at": now,
             "updated_at": now,
         }
@@ -192,6 +194,7 @@ class MerchantRepository(BaseRepository[Merchant]):
             "return_portal_url": (
                 str(merchant.return_portal_url) if merchant.return_portal_url else None
             ),
+            "policy_urls": merchant.policy_urls,
             "created_at": now,
             "updated_at": now,
         }
@@ -214,6 +217,7 @@ class MerchantRepository(BaseRepository[Merchant]):
                         if merchant.return_portal_url
                         else None
                     ),
+                    "policy_urls": merchant.policy_urls,
                     "updated_at": now,
                 },
             )

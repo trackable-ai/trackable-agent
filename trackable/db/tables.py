@@ -55,6 +55,7 @@ merchants = Table(
     Column("support_email", String(255)),
     Column("support_url", Text),
     Column("return_portal_url", Text),
+    Column("policy_urls", JSONB, default=[]),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
 )

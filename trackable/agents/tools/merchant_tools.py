@@ -47,5 +47,6 @@ def get_merchant_info(
             "return_portal_url": (
                 str(merchant.return_portal_url) if merchant.return_portal_url else None
             ),
+            "policy_urls": merchant.policy_urls,
         },
     }
