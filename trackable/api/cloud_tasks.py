@@ -142,6 +142,7 @@ def create_gmail_sync_task(
 
 
 def create_policy_refresh_task(
+    job_id: str,
     merchant_id: str,
     merchant_domain: str,
     force_refresh: bool = False,
@@ -151,6 +152,7 @@ def create_policy_refresh_task(
     Create a Cloud Task to refresh a merchant's return policy.
 
     Args:
+        job_id: Job ID for tracking
         merchant_id: Merchant ID to refresh
         merchant_domain: Merchant domain for logging
         force_refresh: Force refresh even if policy unchanged
@@ -160,6 +162,7 @@ def create_policy_refresh_task(
         Task name (full resource path)
     """
     payload = PolicyRefreshTask(
+        job_id=job_id,
         merchant_id=merchant_id,
         merchant_domain=merchant_domain,
         force_refresh=force_refresh,
