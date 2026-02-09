@@ -6,6 +6,7 @@ online shopping orders after purchase.
 """
 
 from google.adk.agents.llm_agent import Agent
+from trackable.config import DEFAULT_MODEL
 
 from trackable.agents.tools import (
     check_return_windows,
@@ -21,7 +22,7 @@ from trackable.agents.tools import (
 from trackable.models.chat import ChatbotOutput
 
 chatbot_agent = Agent(
-    model="gemini-2.5-flash",
+    model=DEFAULT_MODEL,
     name="trackable_chatbot",
     description="Personal shopping assistant for post-purchase order management",
     instruction="""You are Trackable, a personal shopping assistant that helps users manage

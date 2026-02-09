@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from google.adk.agents.llm_agent import Agent
 from pydantic import BaseModel, Field
+from trackable.config import DEFAULT_MODEL
 
 from trackable.models.policy import (
     ExchangePolicy,
@@ -169,7 +170,7 @@ policy pages and extract structured information about return and exchange polici
 **Output Format:**
 Return a structured JSON with all extracted policy information and confidence scores.
 """,
-    model="gemini-2.5-flash",
+    model=DEFAULT_MODEL,
     output_schema=PolicyExtractorOutput,
 )
 

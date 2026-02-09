@@ -13,6 +13,7 @@ from uuid import uuid4
 from google.adk.agents.llm_agent import Agent
 from pydantic import BaseModel, Field
 
+from trackable.config import DEFAULT_MODEL
 from trackable.models.order import (
     Carrier,
     Item,
@@ -269,7 +270,7 @@ Return a structured JSON with all extracted order data, including:
     # input_schema=InputProcessorInput,
     output_schema=InputProcessorOutput,
     output_key="orders",
-    model="gemini-2.5-flash",
+    model=DEFAULT_MODEL,
 )
 
 
