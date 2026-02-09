@@ -1,7 +1,7 @@
 # Trackable Development Tracking
 
 **Status**: In Progress
-**Last Updated**: 2026-02-07
+**Last Updated**: 2026-02-08
 
 ## Overview
 
@@ -51,17 +51,20 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - Comprehensive tests (9 passing tests)
 - [x] **Chatbot Agent** (`trackable/agents/chatbot.py`)
     - Google ADK agent with database-backed tools
-    - 5 custom tools for order/merchant queries (`trackable/agents/tools/`)
+    - 9 custom tools for order/merchant/policy queries (`trackable/agents/tools/`)
     - `get_user_orders` - List/filter orders by status
     - `get_order_details` - Full order detail with items, shipments, pricing
     - `check_return_windows` - Find orders with expiring return deadlines
-    - `get_merchant_info` - Merchant support info and return portal lookup
+    - `get_merchant_info` - Merchant support info, return portal, and policy URLs
     - `search_order_by_number` - Find order by merchant order number
     - `search_orders` - Fuzzy search orders by item name, merchant, or order number
+    - `get_return_policy` - Detailed return policy for a merchant (window, conditions, refund method, shipping, exclusions)
+    - `get_exchange_policy` - Detailed exchange policy for a merchant (types, conditions, shipping)
+    - `get_policy_for_order` - Both return and exchange policies for a specific order with deadline calculation
     - User_id injection in chat API for tool context
     - `OrderRepository.search()` with JOIN + ILIKE across order numbers, merchant names, and item names (JSONB `jsonb_array_elements`)
     - 6 integration tests for search (item name, merchant name, order number, case-insensitive, empty, user scoping)
-    - 30 chatbot tool tests (unit + scenario)
+    - 53 chatbot tool tests (unit + scenario + policy tools)
     - 3 manual integration tests for chatbot agent with real LLM and database (`tests/agents/test_chatbot.py`)
         - Search by product name (e.g., MacBook)
         - Search by merchant name
@@ -126,10 +129,10 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - `handle_policy_refresh()` - Fetches and extracts merchant policies
     - Web scraping utilities (`trackable/utils/web_scraper.py`):
         - `fetch_policy_page()` - HTTP fetching with BeautifulSoup and realistic browser User-Agent
-        - `discover_policy_url()` - Policy URL discovery from domain
-    - Policy URL discovery (support_url priority, then common patterns)
+        - `discover_policy_url()` - Policy URL discovery from domain (retained for future agent-based search)
+    - Uses `merchant.policy_urls` for curated policy page URLs (replaces heuristic URL discovery)
     - Hash-based change detection (skips update if content unchanged)
-    - PolicyRepository with upsert by merchant/type/country
+    - PolicyRepository with data-presence queries (`get_return_policy_by_merchant`, `get_exchange_policy_by_merchant`)
     - Creates Job records for tracking
     - 7 unit tests for web scraper
     - 6 manual tests for policy extraction (including Amazon real-world test)
@@ -184,7 +187,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
         - `order.py` - Order CRUD with JSONB items/money
         - `shipment.py` - Shipment tracking events
         - `oauth_token.py` - OAuth token storage and refresh
-        - `policy.py` - Policy CRUD with hash-based change detection
+        - `policy.py` - Policy CRUD with hash-based change detection, data-presence queries
 - [x] Database initialization in `worker/main.py` and `api/main.py`
 - [x] Refactored `worker/handlers.py` to use repositories
     - Save parsed orders to database
@@ -268,7 +271,7 @@ This document tracks the implementation progress of the Trackable Personal Shopp
 
 #### Chatbot Enhancement (Remaining)
 
-- [ ] Query merchant return policies (requires PolicyRepository - not yet built)
+- [x] ~~Query merchant return/exchange policies~~ (completed — 3 policy tools added)
 - [ ] Provide personalized recommendations (requires order history analysis)
 
 #### Ingress Service - Email Filtering
@@ -319,6 +322,30 @@ This document tracks the implementation progress of the Trackable Personal Shopp
     - [ ] Dead letter queue monitoring
 
 ## Recent Updates
+
+### 2026-02-08
+
+- ✅ **Policy Query Tools for Chatbot** - Added 3 new tools to chatbot agent for policy queries
+    - `get_return_policy(merchant_name, merchant_domain, country_code)` - Detailed return policy lookup
+    - `get_exchange_policy(merchant_name, merchant_domain, country_code)` - Detailed exchange policy lookup
+    - `get_policy_for_order(user_id, order_id)` - Both policies for a specific order with deadline calculation
+    - Human-readable formatting for enums (conditions, refund methods, shipping responsibility, exchange types)
+    - Updated chatbot agent instructions with policy tool decision tree
+    - 19 unit tests for policy tools, 4 chatbot registration tests
+- ✅ **Query Policies by Data Presence** - Refactored PolicyRepository to query by populated data instead of `policy_type` column
+    - New methods: `get_return_policy_by_merchant()` (filters by `return_policy IS NOT NULL`), `get_exchange_policy_by_merchant()` (filters by `exchange_policy IS NOT NULL`)
+    - Fixes issue where combined return+exchange pages stored as single DB record were invisible to exchange queries
+    - Updated policy tools and handlers to use new query methods
+    - 3 new repository tests
+- ✅ **Merchant `policy_urls` Column** - Added `policy_urls` JSONB column to merchants for curated policy page URLs
+    - Migration 007: `ALTER TABLE merchants ADD COLUMN IF NOT EXISTS policy_urls JSONB DEFAULT '[]'`
+    - Updated Merchant model, table definition, repository (`_row_to_model`, `_model_to_dict`, `upsert_by_domain`)
+    - Exposed `policy_urls` in `get_merchant_info` tool
+    - Refactored `handle_policy_refresh()` to use `merchant.policy_urls` instead of `discover_policy_url()` heuristic
+    - Early return with `no_policy_urls` status when merchant has no configured URLs
+    - `fetch_failed` status with `attempted_urls` when all URLs fail
+    - 4 new merchant repository tests
+    - All 221 tests passing
 
 ### 2026-02-07
 
