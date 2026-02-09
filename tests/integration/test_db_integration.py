@@ -144,12 +144,12 @@ class TestMerchantRepository:
         from trackable.models.order import Merchant
 
         unique_suffix = uuid4().hex[:8]
-        domain = f"amazon-test-{unique_suffix}.com"
+        domain = f"bmazon-test-{unique_suffix}.com"
 
         # Create merchant with uppercase name
         merchant = Merchant(
             id="",  # Let repository generate ID
-            name="AMAZON",
+            name="Bmazon",  # Intentionally misspelled to not collide with real Amazon if it exists
             domain=domain,
         )
 
@@ -162,7 +162,7 @@ class TestMerchantRepository:
         assert created.domain == domain
         # Should have aliases generated
         assert len(created.aliases) > 0
-        assert "amazon" in created.aliases
+        assert "bmazon" in created.aliases
 
     def test_upsert_normalizes_domain(self, uow):
         """Test that upsert normalizes domains (removes www prefix)."""
