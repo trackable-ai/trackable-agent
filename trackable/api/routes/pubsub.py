@@ -267,6 +267,7 @@ async def handle_policy_refresh(message: PubSubPushMessage) -> PubSubResponse:
 
             # Create Cloud Task
             task_name = create_policy_refresh_task(
+                job_id=job_id,
                 merchant_id=merchant.id,
                 merchant_domain=merchant.domain,
                 force_refresh=False,
