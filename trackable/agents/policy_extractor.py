@@ -9,7 +9,6 @@ from typing import Optional
 from uuid import uuid4
 
 from google.adk.agents.llm_agent import Agent
-from google.adk.runners import InMemoryRunner
 from pydantic import BaseModel, Field
 
 from trackable.models.policy import (
@@ -172,11 +171,6 @@ Return a structured JSON with all extracted policy information and confidence sc
 """,
     model="gemini-2.5-flash",
     output_schema=PolicyExtractorOutput,
-)
-
-# Runner instance
-policy_extractor_runner = InMemoryRunner(
-    agent=policy_extractor_agent, app_name="trackable-policy-extractor"
 )
 
 

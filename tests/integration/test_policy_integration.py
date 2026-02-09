@@ -20,7 +20,6 @@ from pydantic import HttpUrl
 from trackable.agents.policy_extractor import (
     PolicyExtractorOutput,
     convert_extracted_to_policy,
-    policy_extractor_runner,
 )
 from trackable.db import UnitOfWork
 from trackable.models.order import Merchant
@@ -32,6 +31,7 @@ from trackable.models.policy import (
     ReturnPolicy,
     ReturnShippingResponsibility,
 )
+from trackable.worker.handlers import policy_extractor_runner
 
 # Load environment variables from .env
 load_dotenv()

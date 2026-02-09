@@ -14,10 +14,10 @@ from google.genai.types import Content, Part
 from trackable.agents.policy_extractor import (
     PolicyExtractorOutput,
     convert_extracted_to_policy,
-    policy_extractor_runner,
 )
 from trackable.models.policy import PolicyType, RefundMethod, ReturnCondition
 from trackable.utils.web_scraper import fetch_policy_page
+from trackable.worker.handlers import policy_extractor_runner
 
 pytestmark = pytest.mark.manual
 

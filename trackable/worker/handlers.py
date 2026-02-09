@@ -23,7 +23,7 @@ MIN_ORDER_CONFIDENCE = 0.9
 from trackable.agents.policy_extractor import (
     PolicyExtractorOutput,
     convert_extracted_to_policy,
-    policy_extractor_runner,
+    policy_extractor_agent,
 )
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import Merchant, SourceType
@@ -33,6 +33,10 @@ from trackable.utils.web_scraper import discover_policy_url, fetch_policy_page
 # Create runner for input processor agent
 input_processor_runner = InMemoryRunner(
     agent=input_processor_agent, app_name="input-processor"
+)
+# Create runner for policy extractor agent
+policy_extractor_runner = InMemoryRunner(
+    agent=policy_extractor_agent, app_name="trackable-policy-extractor"
 )
 
 
