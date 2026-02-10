@@ -24,7 +24,7 @@ from trackable.utils.gcp import get_service_account_email, get_worker_service_ur
 
 # Configuration from environment
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+CLOUD_TASKS_LOCATION = os.getenv("CLOUD_TASKS_LOCATION", "us-central1")
 QUEUE_NAME = os.getenv("CLOUD_TASKS_QUEUE", "order-parsing-tasks")
 
 logger = logging.getLogger(__name__)
@@ -215,7 +215,7 @@ def _create_task(
 
     # Production mode - create actual Cloud Task
     client = tasks_v2.CloudTasksClient()
-    queue_path = client.queue_path(PROJECT_ID, LOCATION, QUEUE_NAME)
+    queue_path = client.queue_path(PROJECT_ID, CLOUD_TASKS_LOCATION, QUEUE_NAME)
     worker_url = get_worker_service_url()
 
     # Build OIDC token for authenticated Cloud Run services

@@ -11,7 +11,7 @@ import google.auth
 import requests
 
 # Configuration from environment
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+WORKER_SERVICE_LOCATION = os.getenv("WORKER_SERVICE_LOCATION", "us-central1")
 WORKER_SERVICE_NAME = os.getenv("WORKER_SERVICE_NAME", "trackable-worker")
 
 
@@ -91,4 +91,4 @@ def get_worker_service_url() -> str:
             "Ensure GOOGLE_CLOUD_PROJECT is set and Cloud Resource Manager API is enabled."
         )
 
-    return f"https://{WORKER_SERVICE_NAME}-{project_number}.{LOCATION}.run.app"
+    return f"https://{WORKER_SERVICE_NAME}-{project_number}.{WORKER_SERVICE_LOCATION}.run.app"

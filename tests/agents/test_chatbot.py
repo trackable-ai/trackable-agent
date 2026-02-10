@@ -8,20 +8,19 @@ These tests are marked as manual because they:
 
 import os
 from datetime import datetime, timezone
+from decimal import Decimal
 from uuid import uuid4
 
 import dotenv
 import pytest
 from google.adk.runners import InMemoryRunner
 from google.genai.types import Content, Part
-from sqlalchemy import text
 
 from trackable.agents.chatbot import chatbot_agent
 from trackable.db import DatabaseConnection, UnitOfWork
 from trackable.models.order import Item, Merchant, Money, Order, OrderStatus, SourceType
 
 pytestmark = pytest.mark.manual
-
 pytest_plugins = ("pytest_asyncio",)
 
 
@@ -114,7 +113,7 @@ class TestChatbotSearchIntegration:
                 order_id=order_id,
                 name=name,
                 quantity=1,
-                price=Money(amount="99.99"),
+                price=Money(amount=Decimal("99.99")),
             )
             for name in item_names
         ]
@@ -126,7 +125,7 @@ class TestChatbotSearchIntegration:
             order_date=now,
             status=OrderStatus.SHIPPED,
             items=items,
-            total=Money(amount="99.99"),
+            total=Money(amount=Decimal("99.99")),
             source_type=SourceType.EMAIL,
             created_at=now,
             updated_at=now,
@@ -143,11 +142,11 @@ class TestChatbotSearchIntegration:
         """Chatbot should use search_orders to find orders by product name."""
         # Create test data
         tag = uuid4().hex[:8]
-        merchant = self._create_merchant("Apple Store")
+        merchant = self._create_merchant("Bad Store")
         order = self._create_order(
             test_user,
             merchant,
-            f"APL-{tag}",
+            f"BAD-{tag}",
             [f"MacBook Pro M4 {tag}"],
         )
 
