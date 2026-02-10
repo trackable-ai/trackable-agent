@@ -1,74 +1,74 @@
-# Trackable
+# Trackable Agent
+
+**The brain behind the operation.**
+
+This service powers the intelligence of Trackable. It's not just a chatbot—it's an agentic system that perceives, remembers, and acts on post-purchase data.
+
+It digests messy inputs (emails, screenshots, return policies) and turns them into structured order data and actionable advice.
+
+## What it does
+
+*   **🕵️‍♀️ Perception**: Ingests order confirmations via Gmail or screenshots and extracts structured data (items, prices, dates, tracking numbers).
+*   **🧠 Reasoning**: Understands complex return policies. It knows that "30 days from delivery" means a different deadline than "30 days from order."
+*   **💬 Conversation**: Talks to users naturally. You can ask "Can I return these Nikes?" and it checks the specific order, the policy, and the current date to give a real answer.
+*   **⚙️ Background Work**: Uses Cloud Tasks to process heavy lifting asynchronously so the chat stays fast.
+
+## Tech Stack
+
+*   **Core**: Python 3.14+, FastAPI, Google GenAI (Gemini / Vertex AI)
+*   **Database**: PostgreSQL with `pgvector` (via Supabase)
+*   **Async**: Google Cloud Tasks for background jobs (email parsing, image analysis)
+*   **Tooling**: `uv` for dependency management
 
 ## Get Started
 
 ### Prerequisites
 
-- Install `uv`
-- Python 3.14+
-- Google Cloud CLI (if using Vertex AI)
+*   Python 3.14+
+*   `uv` (fast Python package manager)
+*   Google Cloud Project (for Vertex AI & Tasks)
 
-On macOS, we can directly use `Brewfile` to manage installations:
+### Setup
 
-```bash
-brew bundle install
-```
+1.  **Install dependencies**:
+    ```bash
+    uv sync
+    ```
 
-### Project Initialization
+2.  **Configure Environment**:
+    Copy `.env.example` to `.env`. You need either a Google AI Studio key OR Vertex AI access.
 
-Using `uv` to create Python virtual environment and install the project dependencies:
+    **Option A: Google AI Studio (Easiest)**
+    ```env
+    GOOGLE_GENAI_USE_VERTEXAI=0
+    GOOGLE_API_KEY="your-api-key"
+    ```
 
-```bash
-uv sync
-```
+    **Option B: Vertex AI (Production)**
+    ```env
+    GOOGLE_GENAI_USE_VERTEXAI=1
+    GOOGLE_CLOUD_PROJECT="your-project-id"
+    GOOGLE_CLOUD_LOCATION="us-central1"
+    ```
 
-### Configuration
+3.  **Run it**:
+    ```bash
+    # Run the API server
+    adk run trackable
 
-#### Google AI Studio (API Key)
+    # OR run the web UI playground
+    adk web
+    ```
 
-The API key can be obtained from [Google AI Studio](https://aistudio.google.com/app/api-keys). Then, copy `.env.example` to `.env` and set `.env` as below:
+## Testing
 
-```txt
-GOOGLE_GENAI_USE_VERTEXAI=0
-GOOGLE_API_KEY="YOUR_API_KEY_HERE"
-```
-
-#### Google Cloud Vertex AI
-
-First, check if we have already set up the Google Cloud account.
-
-```bash
-gcloud auth list
-gcloud config get project
-```
-
-If not, authenticate the Google Cloud account:
-
-```bash
-gcloud auth application-default login
-```
-
-Then, copy `.env.example` to `.env` and set `.env` as below:
-
-```txt
-GOOGLE_GENAI_USE_VERTEXAI=1
-GOOGLE_CLOUD_PROJECT="YOUR_PROJECT_ID"
-GOOGLE_CLOUD_LOCATION="YOUR_VERTEX_AI_LOCATION" # e.g., us-central1
-```
-
-## Run Agent
+We have both automated and manual (LLM-based) tests.
 
 ```bash
-# Run agent in the command line
-adk run trackable
-
-# Run agent web UI
-adk web
+pytest .          # Run standard unit/integration tests
+pytest -m manual  # Run manual tests (hits real LLMs, costs money)
 ```
 
-## Run Tests
+---
 
-```bash
-pytest .  # run all tests (excluding manual ones)
-pytest -m manual  # run all manual tests (especially llm-related ones)
-```
+Built by the Trackable AI team.
