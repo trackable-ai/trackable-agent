@@ -18,6 +18,7 @@ class BatchItemStatus(StrEnum):
 
     SUCCESS = "success"
     DUPLICATE = "duplicate"  # For images only
+    FILTERED = "filtered"  # For emails only
     FAILED = "failed"
 
 
@@ -142,5 +143,6 @@ class IngestBatchResponse(BaseModel):
     total: int = Field(description="Total items in request")
     succeeded: int = Field(description="Number of items successfully queued")
     duplicates: int = Field(description="Number of duplicate items (images only)")
+    filtered: int = Field(default=0, description="Number of items filtered out (emails only)")
     failed: int = Field(description="Number of items that failed")
     results: list[BatchItemResult] = Field(description="Individual results per item")

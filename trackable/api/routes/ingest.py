@@ -30,6 +30,7 @@ from trackable.models.ingest import (
 from trackable.models.job import Job, JobStatus, JobType
 from trackable.models.order import SourceType
 from trackable.models.source import Source
+from trackable.utils.email_filter import should_process_email
 from trackable.utils.hash import compute_sha256
 
 router = APIRouter()
@@ -39,7 +40,7 @@ router = APIRouter()
 class IngestResult:
     """Internal result from processing a single ingest item."""
 
-    status: Literal["queued", "duplicate", "failed"]
+    status: Literal["queued", "duplicate", "filtered", "failed"]
     job_id: str | None = None
     source_id: str | None = None
     error: str | None = None
@@ -55,9 +56,22 @@ async def _process_single_email(
     """
     Process a single email submission.
 
-    Creates Job/Source records and Cloud Task.
+    Checks filters, creates Job/Source records and Cloud Task.
     Returns IngestResult with status and IDs.
     """
+    # 1. Check filtering rules
+    should_process, reason = should_process_email(
+        subject=email_subject,
+        sender=email_from,
+        content=email_content,
+    )
+
+    if not should_process:
+        return IngestResult(
+            status="filtered",
+            message=reason,
+        )
+
     now = datetime.now(timezone.utc)
     job_id = str(uuid4())
     source_id = str(uuid4())
@@ -256,6 +270,15 @@ async def ingest_email(
     if result.status == "failed":
         raise HTTPException(status_code=500, detail=result.error)
 
+    if result.status == "filtered":
+        # Return success but with filtered status
+        return IngestResponse(
+            job_id="",
+            source_id="",
+            status="filtered",
+            message=result.message or "Email filtered out by rules.",
+        )
+
     return IngestResponse(
         job_id=result.job_id or "",
         source_id=result.source_id or "",
@@ -328,6 +351,7 @@ async def ingest_email_batch(
     """
     results: list[BatchItemResult] = []
     succeeded = 0
+    filtered = 0
     failed = 0
 
     for index, item in enumerate(request.items):
@@ -349,6 +373,15 @@ async def ingest_email_batch(
                 )
             )
             succeeded += 1
+        elif result.status == "filtered":
+            results.append(
+                BatchItemResult(
+                    index=index,
+                    status=BatchItemStatus.FILTERED,
+                    message=result.message,
+                )
+            )
+            filtered += 1
         else:
             results.append(
                 BatchItemResult(
@@ -365,6 +398,7 @@ async def ingest_email_batch(
         total=len(request.items),
         succeeded=succeeded,
         duplicates=0,  # Emails don't have duplicate detection
+        filtered=filtered,
         failed=failed,
         results=results,
     )
