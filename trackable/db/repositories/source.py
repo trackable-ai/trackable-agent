@@ -159,6 +159,24 @@ class SourceRepository(BaseRepository[Source]):
             updated_at=now,
         )
 
+    def mark_processed_no_order(self, source_id: str | UUID) -> bool:
+        """
+        Mark source as processed without an order (e.g. no order found).
+
+        Args:
+            source_id: Source ID
+
+        Returns:
+            True if source was updated
+        """
+        now = datetime.now(timezone.utc)
+        return self.update_by_id(
+            source_id,
+            processed=True,
+            order_id=None,
+            updated_at=now,
+        )
+
     def get_unprocessed(
         self, user_id: str | None = None, limit: int = 100
     ) -> list[Source]:
