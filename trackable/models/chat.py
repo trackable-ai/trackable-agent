@@ -27,7 +27,7 @@ class ChatMessage(BaseModel):
     """A single message in a conversation."""
 
     role: MessageRole = Field(description="The role of the message author")
-    content: str = Field(description="The content of the message")
+    content: str | list[dict] = Field(description="The content of the message (text or multimodal parts)")
 
 
 class ChatCompletionRequest(BaseModel):

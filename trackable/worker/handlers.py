@@ -184,6 +184,7 @@ Return structured data with confidence score."""
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(job_id, {"status": "no_orders_found"})
+                    uow.sources.mark_processed_no_order(source_id)
                     uow.commit()
             return {
                 "status": "no_orders_found",
@@ -213,6 +214,7 @@ Return structured data with confidence score."""
                             "merchant_name": extracted.merchant_name,
                         },
                     )
+                    uow.sources.mark_processed_no_order(source_id)
                     uow.commit()
             return {
                 "status": "low_confidence",
@@ -448,6 +450,7 @@ Return structured data with confidence score. If information is unclear or missi
             if DatabaseConnection.is_initialized():
                 with UnitOfWork() as uow:
                     uow.jobs.mark_completed(job_id, {"status": "no_orders_found"})
+                    uow.sources.mark_processed_no_order(source_id)
                     uow.commit()
             return {
                 "status": "no_orders_found",
@@ -478,6 +481,7 @@ Return structured data with confidence score. If information is unclear or missi
                             "merchant_name": extracted.merchant_name,
                         },
                     )
+                    uow.sources.mark_processed_no_order(source_id)
                     uow.commit()
             return {
                 "status": "low_confidence",
