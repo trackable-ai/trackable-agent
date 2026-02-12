@@ -11,6 +11,7 @@ import json
 import logging
 import time
 import uuid
+import base64
 from typing import AsyncIterator
 
 from fastapi import APIRouter, HTTPException
@@ -58,37 +59,56 @@ async def _get_or_create_session(user_id: str) -> str:
     return session.id
 
 
-def _build_prompt_from_messages(messages: list, user_id: str | None = None) -> str:
+def _extract_last_user_content(messages: list, user_id: str | None = None) -> Content | None:
     """
-    Build a prompt string from the messages list.
-
-    For now, we concatenate messages. The ADK agent maintains its own
-    conversation history via sessions, so we primarily use the last user message.
-    Injects user_id context so the agent can pass it to database tools.
+    Extract the content from the last user message.
+    Handles both text-only (string) and multimodal (list) content.
     """
-    # Find the last user message
-    prompt = ""
     for msg in reversed(messages):
         if msg.role == MessageRole.USER:
-            prompt = msg.content
-            break
+            parts = []
+            
+            # Inject user_id context if needed (handled in caller for now or appended to text)
+            # For now, we just return the raw content as GenAI parts
+            
+            if isinstance(msg.content, str):
+                text_content = msg.content
+                if user_id:
+                    text_content = f"[Context: The current user_id is '{user_id}'. Use this for all tool calls that require user_id.]\n\n{text_content}"
+                parts.append(Part(text=text_content))
+            elif isinstance(msg.content, list):
+                # Process multimodal content
+                has_text = False
+                for item in msg.content:
+                    if item.get("type") == "text":
+                        text_val = item["text"]
+                        if user_id and not has_text:
+                            text_val = f"[Context: The current user_id is '{user_id}'. Use this for all tool calls that require user_id.]\n\n{text_val}"
+                            has_text = True
+                        parts.append(Part(text=text_val))
+                    elif item.get("type") == "image_url":
+                        # OpenAI format: {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+                        image_url = item["image_url"]["url"]
+                        if image_url.startswith("data:"):
+                            # Parse data URL
+                            try:
+                                header, data = image_url.split(",", 1)
+                                mime_type = header.split(":")[1].split(";")[0]
+                                decoded_data = base64.b64decode(data)
+                                parts.append(Part.from_bytes(data=decoded_data, mime_type=mime_type))
+                            except Exception as e:
+                                logger.error(f"Failed to parse data URL: {e}")
+                        else:
+                            # Handle public URLs if needed - skipping for now as frontend sends data URLs
+                            pass 
+                
+                # If no text part was found but we have user_id, add a text part with context
+                if user_id and not has_text:
+                     parts.insert(0, Part(text=f"[Context: The current user_id is '{user_id}'. Use this for all tool calls that require user_id.]"))
 
-    if not prompt:
-        # Fallback: concatenate all messages
-        parts = []
-        for msg in messages:
-            prefix = {"system": "System", "user": "User", "assistant": "Assistant"}.get(
-                msg.role.value, "User"
-            )
-            parts.append(f"{prefix}: {msg.content}")
-        prompt = "\n".join(parts)
-
-    # Inject user_id context for tool calls
-    if user_id:
-        prompt = f"[Context: The current user_id is '{user_id}'. Use this for all tool calls that require user_id.]\n\n{prompt}"
-
-    return prompt
-
+            return Content(parts=parts, role="user")
+    
+    return None
 
 def _parse_chatbot_output(response_text: str) -> ChatbotOutput:
     """Parse the agent's JSON response into a ChatbotOutput.
@@ -104,10 +124,10 @@ def _parse_chatbot_output(response_text: str) -> ChatbotOutput:
         return ChatbotOutput(content=response_text, suggestions=[])
 
 
-async def _run_agent(user_id: str, prompt: str) -> ChatbotOutput:
+async def _run_agent(user_id: str, new_message: Content) -> ChatbotOutput:
     """Run the agent and return the structured output."""
     session_id = await _get_or_create_session(user_id)
-    new_message = Content(parts=[Part(text=prompt)], role="user")
+    # new_message is already a Content object
 
     response_text = ""
     async for event in runner.run_async(
@@ -143,7 +163,7 @@ async def _generate_stream(
     created: int,
     model: str,
     user_id: str,
-    prompt: str,
+    new_message: Content,
 ) -> AsyncIterator[str]:
     """Generate streaming response with structured output.
 
@@ -152,8 +172,7 @@ async def _generate_stream(
     as a final metadata event.
     """
     session_id = await _get_or_create_session(user_id)
-    new_message = Content(parts=[Part(text=prompt)], role="user")
-
+    
     logger.info(
         "User ID: %s, Session ID: %s, new msg: %s", user_id, session_id, new_message
     )
@@ -244,14 +263,20 @@ async def chat_completions(request: ChatCompletionRequest):
     """
     try:
         user_id = request.user or "default_user"
-        prompt = _build_prompt_from_messages(request.messages, user_id=user_id)
+        
+        # Extract content from last user message (multimodal aware)
+        new_message = _extract_last_user_content(request.messages, user_id=user_id)
+        
+        if not new_message:
+             raise HTTPException(status_code=400, detail="No user message found")
+
         request_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created = int(time.time())
         model = request.model
 
         if request.stream:
             return StreamingResponse(
-                _generate_stream(request_id, created, model, user_id, prompt),
+                _generate_stream(request_id, created, model, user_id, new_message),
                 media_type="text/event-stream",
                 headers={
                     "Cache-Control": "no-cache",
@@ -261,7 +286,7 @@ async def chat_completions(request: ChatCompletionRequest):
             )
 
         # Non-streaming response
-        output = await _run_agent(user_id, prompt)
+        output = await _run_agent(user_id, new_message)
 
         return ChatCompletionResponse(
             id=request_id,
@@ -274,14 +299,15 @@ async def chat_completions(request: ChatCompletionRequest):
                 )
             ],
             usage=ChatCompletionUsage(
-                prompt_tokens=len(prompt.split()),
+                prompt_tokens=0, # Calculation complex with images
                 completion_tokens=len(output.content.split()),
-                total_tokens=len(prompt.split()) + len(output.content.split()),
+                total_tokens=len(output.content.split()),
             ),
             suggestions=output.suggestions,
         )
 
     except Exception as e:
+        logger.error(f"Chat completion failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Chat completion failed: {str(e)}",
